@@ -1,4 +1,7 @@
-const DONGDO_LOGO_URL = "https://media.base44.com/images/public/6a028b430498216173e75f46/b251fa753_646407991_937108378848349_3518023466281723602_n.jpg";
+const DONGDO_LOGO_URL = "/static/creator.jpg";
+const DONGDO_CREATOR_NAME = "VISION ID";
+const DONGDO_CREATOR_TAGLINE = "ĐỨNG ĐẦU CÔNG NGHỆ - ĐỊNH HƯỚNG TƯƠNG LAI";
+const DONGDO_CREATOR_SUBTITLE = "Công cụ tính toán phẫu thuật khúc xạ được hỗ trợ bởi AI PRO";
 const DONGDO_PROCEDURES = ["SMILE Pro", "CLEAR", "SmartSight", "Femto-LASIK", "Trans-PRK", "Presbyond", "PresbyMAX"];
 const DONGDO_NAVY = "#0a3d6b";
 const DONGDO_TEAL = "#2ab3b8";
@@ -190,21 +193,22 @@ function renderDongDo() {
   const root = document.getElementById("dongdoApp");
   if (!root) return;
   const tabs = [
-    ["planning", "Surgical Planning"],
-    ["patients", `Patient Directory (${dongdoState.patients.length})`],
-    ["history", `Saved Plans (${dongdoState.plans.length})`],
+    ["planning", "Tính toán nhanh"],
+    ["patients", `Bệnh nhân (${dongdoState.patients.length})`],
+    ["history", `Kế hoạch đã lưu (${dongdoState.plans.length})`],
   ];
   root.innerHTML = `
     <div class="dd-header">
-      <img src="${DONGDO_LOGO_URL}" alt="Eye Dong Do">
-      <div>
-        <strong>Dong Do Eye Hospital</strong>
-        <span>Refractive Surgery Planning - VISION ID · ${dongdoState.surgeon}</span>
+      <img src="${DONGDO_LOGO_URL}" alt="Ảnh người sáng tạo">
+      <div class="dd-creator-copy">
+        <strong>${DONGDO_CREATOR_NAME}</strong>
+        <span>${DONGDO_CREATOR_TAGLINE}</span>
+        <em>${DONGDO_CREATOR_SUBTITLE}</em>
       </div>
       <div class="dd-header-actions">
         ${dongdoState.activeTab === "planning" ? `
-          <button data-dd-action="save-sync" class="dd-success" tabindex="-1">Save & Sync</button>
-          <button data-dd-action="print" class="dd-light" tabindex="-1">Export PDF</button>
+          <button data-dd-action="save-sync" class="dd-success" tabindex="-1">Lưu kế hoạch</button>
+          <button data-dd-action="print" class="dd-light" tabindex="-1">Xuất PDF</button>
           <button data-dd-action="sheets" class="dd-icon" title="Google Sheets" tabindex="-1">⚙</button>
         ` : ""}
       </div>
@@ -458,19 +462,197 @@ function handleDongDoSave() {
 
 function handleDongDoPrint() {
   recalcDongDo();
-  const win = window.open("", "_blank", "width=1000,height=750");
-  const eyeReport = (label, eye, calc) => `<section class="print-eye"><h2>${label}</h2><table>
-    <tr><td>Procedure</td><td>${eye.procedure}</td></tr>
-    <tr><td>Sphere / Cylinder</td><td>${eye.sph || "—"} / ${eye.cyl || "—"} D</td></tr>
-    <tr><td>Final Laser Sphere</td><td>${calc?.finalLaserSph ?? "—"} D</td></tr>
-    <tr><td>Ablation</td><td>${calc?.ablation ?? "—"} um</td></tr>
-    <tr><td>RSB</td><td>${calc?.rsb ?? "—"} um</td></tr>
-    <tr><td>PTA</td><td>${calc?.pta ?? "—"}%</td></tr>
-    <tr><td>Post K1 / K2</td><td>${calc?.postK1 ?? "—"} / ${calc?.postK2 ?? "—"} D</td></tr>
-  </table></section>`;
-  win.document.write(`<!doctype html><html><head><title>Surgical Plan Report</title><style>body{font-family:Arial;padding:28px;color:#111827}.head{display:flex;gap:16px;align-items:center;border-bottom:2px solid ${DONGDO_TEAL};padding-bottom:14px;margin-bottom:18px}.head img{width:64px;height:64px;border-radius:50%;object-fit:cover}.patient{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;background:#f0f8ff;border:1px solid #c5d9f0;border-radius:8px;padding:12px;margin-bottom:16px}.dual{display:grid;grid-template-columns:1fr 1fr;gap:14px}.print-eye{border:1px solid ${DONGDO_NAVY};border-radius:8px;overflow:hidden}.print-eye h2{background:${DONGDO_NAVY};color:#fff;margin:0;padding:8px 10px;font-size:14px}table{width:100%;border-collapse:collapse}td{border-bottom:1px solid #e5e7eb;padding:7px 9px;font-size:12px}td:last-child{text-align:right;font-weight:700}@media print{body{padding:12mm}}</style></head><body><div class="head"><img src="${DONGDO_LOGO_URL}"><div><h1>Dong Do Eye Hospital</h1><p>Refractive Surgery Planning System - VISION ID</p></div></div><div class="patient"><div><b>Patient</b><br>${escapeHtml(dongdoState.patient.name || "—")}</div><div><b>ID</b><br>${escapeHtml(dongdoState.patient.id || "—")}</div><div><b>YOB</b><br>${escapeHtml(dongdoState.patient.year || "—")}</div><div><b>Surgeon</b><br>${escapeHtml(dongdoState.surgeon)}</div></div><div class="dual">${eyeReport("Right Eye (OD)", dongdoState.od, dongdoState.calcOD)}${eyeReport("Left Eye (OS)", dongdoState.os, dongdoState.calcOS)}</div></body></html>`);
-  win.document.close();
-  setTimeout(() => win.print(), 500);
+  const signed = (value, digits = 2) => {
+    const n = parseFloat(value);
+    if (isNaN(n)) return "—";
+    return `${n >= 0 ? "+" : ""}${n.toFixed(digits)}`;
+  };
+  const raw = (value, suffix = "") => value !== "" && value !== null && value !== undefined ? `${escapeHtml(value)}${suffix}` : "—";
+  const calcValue = (value, suffix = "") => value !== null && value !== undefined && !isNaN(value) ? `${value}${suffix}` : "—";
+  const corvitMeta = (status) => {
+    if (status === "danger") return { cls: "danger", label: "Danger", note: "Xem xét phương pháp Phakic ICL" };
+    if (status === "caution") return { cls: "warning", label: "Warning", note: "Cảnh báo, xem xét sử dụng thêm Crosslinking" };
+    return { cls: "success", label: "Normal", note: "Trong giới hạn bình thường" };
+  };
+  const postKClass = (value) => value === null || value === undefined ? "" : value < 34 ? "danger-text" : value < 35 ? "warning-text" : "success-text";
+  const collectAlerts = (eye, calc) => {
+    const alerts = [];
+    const corvit = corvitMeta(eye.corvis_status);
+    if (eye.corvis_status !== "normal") alerts.push({ cls: corvit.cls, text: `Corvit ST ${corvit.label}: ${corvit.note}` });
+    const hoa = hoaAlert(parseFloat(eye.hoa_rms));
+    if (hoa && hoa.level !== "normal") alerts.push({ cls: hoa.level === "danger" ? "danger" : "warning", text: hoa.text });
+    const tbut = tbutAlert(parseFloat(eye.tbut));
+    if (tbut && tbut.level !== "success") alerts.push({ cls: tbut.level, text: tbut.text });
+    const highCyl = highCylAlert(eye.cyl);
+    if (highCyl) alerts.push({ cls: "purple", text: highCyl });
+    if (calc?.topoAlert) alerts.push({ cls: "danger", text: "Monitor Corneal Topography: CCT - Thinnest > 15 um" });
+    if (calc?.nightRisk) alerts.push({ cls: "warning", text: "Night Vision Risk: Mesopic Pupil > OZ" });
+    if (calc?.rsb !== null && calc?.rsb < 250) alerts.push({ cls: "danger", text: `RSB nguy hiểm: ${calc.rsb} um` });
+    if (calc?.pta !== null) {
+      const tier = ptaLevel(calc.pta, eye.procedure);
+      if (tier === "caution") alerts.push({ cls: "warning", text: `PTA At Risk: ${calc.pta}% - cân nhắc Crosslinking` });
+      if (tier === "danger") alerts.push({ cls: "danger", text: `PTA High Risk: ${calc.pta}% - cân nhắc Phakic ICL` });
+    }
+    (calc?.vaAlerts || []).forEach((item) => alerts.push({ cls: "warning", text: item.msg }));
+    if (calc?.postK1 !== null && calc?.postK1 < 35) alerts.push({ cls: calc.postK1 < 34 ? "danger" : "warning", text: `Post-K1 thấp: ${calc.postK1} D` });
+    if (calc?.postK2 !== null && calc?.postK2 < 35) alerts.push({ cls: calc.postK2 < 34 ? "danger" : "warning", text: `Post-K2 thấp: ${calc.postK2} D` });
+    return alerts;
+  };
+  const row = (label, value, cls = "") => `<tr><td>${label}</td><td class="${cls}">${value}</td></tr>`;
+  const section = (label) => `<tr><th colspan="2">${label}</th></tr>`;
+  const resultBadge = (label, value, cls = "") => `<div class="result ${cls}"><span>${label}</span><strong>${value}</strong></div>`;
+  const eyeReport = (label, eye, calc) => {
+    const corvit = corvitMeta(eye.corvis_status);
+    const tier = calc?.pta !== null && calc?.pta !== undefined ? ptaLevel(calc.pta, eye.procedure) : "";
+    const alerts = collectAlerts(eye, calc);
+    return `<section class="print-eye">
+      <h2>${label}</h2>
+      <div class="result-grid">
+        ${resultBadge("Input Sphere", calc ? `${signed(calc.finalLaserSph)} D` : "—", "primary")}
+        ${resultBadge("Ablation", calcValue(calc?.ablation, " um"), "primary")}
+        ${resultBadge("RSB", calcValue(calc?.rsb, " um"), calc?.rsb !== null && calc?.rsb < 250 ? "danger" : "success")}
+        ${resultBadge("PTA", calcValue(calc?.pta, "%"), tier === "danger" ? "danger" : tier === "caution" ? "warning" : "success")}
+      </div>
+      <table>
+        ${section("1. Corneal Biometrics")}
+        ${row("Thinnest / CCT", `${raw(eye.thinnest_point, " um")} / ${raw(eye.cct, " um")}`)}
+        ${row("Mesopic Pupil", raw(eye.pupil_mesopic, " mm"))}
+        ${row("K1 / K2", `${raw(eye.k1, " D")} / ${raw(eye.k2, " D")}`)}
+        ${row("WTW / HOA RMS / TBUT", `${raw(eye.wtw, " mm")} / ${raw(eye.hoa_rms, " um")} / ${raw(eye.tbut, " sec")}`)}
+        ${row("Ocular Dominance", raw(eye.ocular_dominance))}
+        ${row("Corvit ST", `<b>${corvit.label}</b><br><small>${corvit.note}</small>`, corvit.cls)}
+        ${section("2. Manifest Refraction")}
+        ${row("Sphere / Cylinder", `${raw(eye.mf_sph, " D")} / ${raw(eye.mf_cyl, " D")}`)}
+        ${row("Axis / BCVA", `${raw(eye.mf_axis, "°")} / ${raw(eye.mf_bcva)}`)}
+        ${section("3. Treatment Plan")}
+        ${row("Sphere / Cylinder", `${raw(eye.sph, " D")} / ${raw(eye.cyl, " D")}`)}
+        ${row("Axis / Target", `${raw(eye.axis, "°")} / ${raw(eye.target_sph, " D")}`)}
+        ${section("4. Surgical Plan")}
+        ${row("Procedure", raw(eye.procedure))}
+        ${row("Cap/Flap / OZ / Incision", `${raw(eye.flap_cap || defaultFlapCap(eye.procedure), " um")} / ${raw(eye.oz, " mm")} / ${raw(eye.incision, " mm")}`)}
+        ${section("Calculation Results")}
+        ${row("Input Sphere / Cylinder", `${calc ? signed(calc.finalLaserSph) : "—"} / ${calc ? signed(calc.cyl) : "—"} D`)}
+        ${row("Total Diopters", calcValue(calc?.totalD?.toFixed ? calc.totalD.toFixed(2) : calc?.totalD, " D"))}
+        ${row("Ablation / Lenticule", calcValue(calc?.ablation, " um"), "primary")}
+        ${row("RSB", calcValue(calc?.rsb, " um"), calc?.rsb !== null && calc?.rsb < 250 ? "danger" : "success")}
+        ${row("PTA", calcValue(calc?.pta, "%"), tier === "danger" ? "danger" : tier === "caution" ? "warning" : "success")}
+        ${row("Post-op K1 / K2", `<span class="${postKClass(calc?.postK1)}">${calcValue(calc?.postK1, " D")}</span> / <span class="${postKClass(calc?.postK2)}">${calcValue(calc?.postK2, " D")}</span>`)}
+        ${row("Predicted VA", raw(calc?.predictedVA))}
+      </table>
+      <div class="alerts">
+        <strong>Warnings & Clinical Notes</strong>
+        ${alerts.length ? alerts.map((item) => `<div class="alert ${item.cls}">${escapeHtml(item.text)}</div>`).join("") : `<div class="alert success">Không có cảnh báo nổi bật.</div>`}
+      </div>
+    </section>`;
+  };
+  const highRisk = [collectAlerts(dongdoState.od, dongdoState.calcOD), collectAlerts(dongdoState.os, dongdoState.calcOS)]
+    .flat()
+    .some((item) => item.cls === "danger");
+  const reportHtml = `<!doctype html><html><head><meta charset="UTF-8"><title>Surgical Plan Report - ${escapeHtml(dongdoState.patient.name || "Patient")}</title><style>
+    @page{size:A4 landscape;margin:7mm}
+    *{box-sizing:border-box}
+    body{margin:0;background:#fff;color:#111827;font-family:Arial,Helvetica,sans-serif;font-size:10.5px;line-height:1.25}
+    .page{width:100%;min-height:100vh;padding:0}
+    .head{display:grid;grid-template-columns:52px 1fr auto;gap:10px;align-items:center;border-bottom:2px solid ${DONGDO_TEAL};padding-bottom:7px;margin-bottom:8px}
+    .head img{width:50px;height:50px;border-radius:50%;object-fit:cover;border:2px solid #dbeafe}
+    h1{margin:0;color:${DONGDO_NAVY};font-size:17px;line-height:1.1}
+    .head p{margin:2px 0 0;color:#64748b;font-size:10px}
+    .doc-title{text-align:right;color:${DONGDO_NAVY};font-weight:800;font-size:13px}
+    .patient{display:grid;grid-template-columns:2fr 1fr 1fr 1.4fr 1.2fr;gap:6px;background:#f0f8ff;border:1px solid #c5d9f0;border-radius:6px;padding:7px 9px;margin-bottom:8px}
+    .pf label{display:block;color:#64748b;text-transform:uppercase;font-size:8px;font-weight:700}
+    .pf span{display:block;color:#0f172a;font-weight:800;font-size:10.5px;margin-top:2px}
+    .global-risk{margin-bottom:8px;padding:6px 9px;border-radius:6px;border:1.5px solid #fca5a5;background:#fef2f2;color:#991b1b;font-weight:800}
+    .dual{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:start}
+    .print-eye{border:1.4px solid ${DONGDO_NAVY};border-radius:7px;overflow:hidden;break-inside:avoid}
+    .print-eye h2{margin:0;background:${DONGDO_NAVY};color:#fff;padding:6px 8px;font-size:12px}
+    .result-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:7px;background:#f8fafc;border-bottom:1px solid #dbe3ec}
+    .result{border:1px solid #cbd5e1;border-radius:5px;background:#fff;padding:5px}
+    .result span{display:block;color:#64748b;font-size:8px;font-weight:700;text-transform:uppercase}
+    .result strong{display:block;margin-top:2px;font-size:12px;color:#0f172a}
+    .result.primary{border-color:#93c5fd;background:#eff6ff}.result.primary strong{color:${DONGDO_NAVY}}
+    .result.success{border-color:#86efac;background:#f0fdf4}.result.success strong{color:#15803d}
+    .result.warning{border-color:#fcd34d;background:#fffbeb}.result.warning strong{color:#b45309}
+    .result.danger{border-color:#fca5a5;background:#fef2f2}.result.danger strong{color:#b91c1c}
+    table{width:100%;border-collapse:collapse}
+    th{background:#e8f1fc;color:${DONGDO_NAVY};text-align:left;padding:4px 7px;font-size:8.5px;text-transform:uppercase;letter-spacing:.2px}
+    td{border-bottom:1px solid #e5e7eb;padding:3.7px 7px;vertical-align:top}
+    td:first-child{width:44%;color:#475569}
+    td:last-child{text-align:right;font-weight:700}
+    td.primary{color:${DONGDO_NAVY}}td.success{color:#15803d}td.warning{color:#b45309}td.danger{color:#b91c1c}
+    .success-text{color:#15803d}.warning-text{color:#b45309}.danger-text{color:#b91c1c}
+    small{font-weight:600;color:inherit}
+    .alerts{padding:6px 7px;background:#fff}
+    .alerts>strong{display:block;color:${DONGDO_NAVY};font-size:9px;text-transform:uppercase;margin-bottom:4px}
+    .alert{border:1px solid #dbe3ec;border-radius:5px;padding:4px 6px;margin-top:3px;font-size:9.5px;font-weight:700}
+    .alert.success{background:#f0fdf4;border-color:#86efac;color:#15803d}
+    .alert.warning{background:#fffbeb;border-color:#fcd34d;color:#92400e}
+    .alert.danger{background:#fef2f2;border-color:#fca5a5;color:#991b1b}
+    .alert.purple{background:#faf5ff;border-color:#d8b4fe;color:#6b21a8}
+    .footer{display:flex;justify-content:space-between;gap:10px;margin-top:6px;padding-top:5px;border-top:1px solid #e5e7eb;color:#64748b;font-size:8.5px}
+    @media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}.page{page-break-after:avoid}}
+  </style></head><body><div class="page">
+    <div class="head">
+      <img src="${DONGDO_LOGO_URL}" alt="Ảnh người sáng tạo">
+      <div><h1>${DONGDO_CREATOR_NAME}</h1><p>${DONGDO_CREATOR_TAGLINE}</p><p>${DONGDO_CREATOR_SUBTITLE}</p></div>
+      <div class="doc-title">SURGICAL PLAN<br>REPORT<br><span style="font-size:9px;color:#64748b">${new Date().toLocaleDateString("en-GB")}</span></div>
+    </div>
+    <div class="patient">
+      <div class="pf"><label>Patient Name</label><span>${escapeHtml(dongdoState.patient.name || "—")}</span></div>
+      <div class="pf"><label>Patient ID</label><span>${escapeHtml(dongdoState.patient.id || "—")}</span></div>
+      <div class="pf"><label>Year of Birth</label><span>${escapeHtml(dongdoState.patient.year || "—")}</span></div>
+      <div class="pf"><label>Surgeon</label><span>${escapeHtml(dongdoState.surgeon)}</span></div>
+      <div class="pf"><label>Printed</label><span>${new Date().toLocaleString("en-GB")}</span></div>
+    </div>
+    ${highRisk ? `<div class="global-risk">High-risk warning detected. Review highlighted PTA/RSB/Corvit ST alerts before surgery.</div>` : ""}
+    <div class="dual">${eyeReport("Right Eye (OD)", dongdoState.od, dongdoState.calcOD)}${eyeReport("Left Eye (OS)", dongdoState.os, dongdoState.calcOS)}</div>
+    <div class="footer"><span>${DONGDO_CREATOR_NAME} - VISION ID</span><span>OD shown on left, OS shown on right. Calculations generated from current input values.</span></div>
+  </div></body></html>`;
+  printReportHtml(reportHtml);
+}
+
+function printReportHtml(reportHtml) {
+  const oldFrame = document.getElementById("dongdoPrintFrame");
+  if (oldFrame) oldFrame.remove();
+
+  const frame = document.createElement("iframe");
+  frame.id = "dongdoPrintFrame";
+  frame.title = "Dong Do Surgical Plan Print Frame";
+  frame.style.position = "fixed";
+  frame.style.right = "0";
+  frame.style.bottom = "0";
+  frame.style.width = "0";
+  frame.style.height = "0";
+  frame.style.border = "0";
+  frame.style.opacity = "0";
+  document.body.appendChild(frame);
+
+  const doc = frame.contentWindow.document;
+  doc.open();
+  doc.write(reportHtml);
+  doc.close();
+
+  frame.onload = () => {
+    setTimeout(() => {
+      frame.contentWindow.focus();
+      frame.contentWindow.print();
+    }, 300);
+  };
+
+  setTimeout(() => {
+    try {
+      frame.contentWindow.focus();
+      frame.contentWindow.print();
+    } catch {
+      const blob = new Blob([reportHtml], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `surgical-plan-${Date.now()}.html`;
+      link.click();
+      URL.revokeObjectURL(url);
+      alert("Trình duyệt chặn hộp thoại in. Tôi đã tải file HTML báo cáo; mở file đó rồi chọn Print/Save as PDF.");
+    }
+  }, 700);
 }
 
 function dongDoTabItems(root) {
