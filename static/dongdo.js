@@ -157,6 +157,26 @@ function calcEye(eye) {
   return { sph, cyl, finalLaserSph, ablation, flapCap, rsb, pta, nightRisk, totalD, postK1, postK2, vaAlerts, topoAlert, predictedVA };
 }
 
+window.VisionIDSharedState = window.VisionIDSharedState || {
+  patient: {},
+  surgeon: "",
+  od: {},
+  os: {},
+};
+
+window.VisionIDCalculator = {
+  defaultFlapCap,
+  calcAblationDepth,
+  calculateRSB: calcRSB,
+  calculatePTA: calcPTA,
+  calcRSB,
+  calcPTA,
+  ptaLevel,
+  ptaLabel,
+  calcEye,
+  eyeSafetyAlerts,
+};
+
 const dongdoState = {
   activeTab: "planning",
   plans: loadLS(LS_PLANS, []),
@@ -171,6 +191,33 @@ const dongdoState = {
 };
 
 let dongdoRecalcTimer = null;
+
+function syncDongDoSharedState() {
+  window.VisionIDSharedState = {
+    patient: { ...dongdoState.patient },
+    surgeon: dongdoState.surgeon,
+    od: { ...dongdoState.od },
+    os: { ...dongdoState.os },
+    calcOD: dongdoState.calcOD,
+    calcOS: dongdoState.calcOS,
+  };
+}
+
+function applyPlanningSharedState(detail = {}) {
+  if (detail.patient) {
+    dongdoState.patient = {
+      name: detail.patient.name || "",
+      id: detail.patient.id || "",
+      year: detail.patient.year || "",
+      dominant: detail.patient.dominant || "OD",
+    };
+  }
+  if (detail.surgeon !== undefined) dongdoState.surgeon = detail.surgeon;
+  if (detail.od) dongdoState.od = { ...dongdoState.od, ...detail.od };
+  if (detail.os) dongdoState.os = { ...dongdoState.os, ...detail.os };
+  recalcDongDo();
+  if (document.getElementById("dongdo")?.classList.contains("active")) renderDongDo();
+}
 
 function ddField(label, key, eye, attrs = "") {
   return `<label>${label}<input data-dd-eye="${eye}" data-dd-key="${key}" ${attrs} value="${escapeHtml(dongdoState[eye][key] ?? "")}"></label>`;
@@ -229,6 +276,7 @@ function renderDongDo() {
       <div class="dd-header-actions">
         ${dongdoState.activeTab === "planning" ? `
           <button data-dd-action="save-sync" class="dd-success" tabindex="-1">Lưu kế hoạch</button>
+          <button data-dd-action="to-planning" class="dd-primary" tabindex="-1">Chuyển sang Hoạch định PT</button>
           <button data-dd-action="print" class="dd-light" tabindex="-1">Xuất PDF</button>
           <button data-dd-action="sheets" class="dd-icon" title="Google Sheets" tabindex="-1">⚙</button>
         ` : ""}
@@ -405,6 +453,7 @@ function handleDongDoCalculate() {
 function recalcDongDo() {
   dongdoState.calcOD = calcEye(dongdoState.od);
   dongdoState.calcOS = calcEye(dongdoState.os);
+  syncDongDoSharedState();
 }
 
 function refreshDongDoResults() {
@@ -455,6 +504,14 @@ function handleDongDoSave() {
   dongdoState.saveMsg = "✓ Plan saved locally!";
   renderDongDo();
   setTimeout(() => { dongdoState.saveMsg = ""; renderDongDo(); }, 3000);
+}
+
+function handleSendToPlanning() {
+  recalcDongDo();
+  syncDongDoSharedState();
+  window.dispatchEvent(new CustomEvent("visionid:quick-to-planning", {
+    detail: { ...window.VisionIDSharedState },
+  }));
 }
 
 function handleDongDoPrint() {
@@ -705,6 +762,7 @@ function attachDongDoEvents() {
     const key = event.target.dataset.ddKey;
     if (patientKey) {
       dongdoState.patient[patientKey] = event.target.value;
+      syncDongDoSharedState();
       if (patientKey === "dominant") renderDongDo();
     }
     if (eye && key) {
@@ -719,6 +777,7 @@ function attachDongDoEvents() {
     const key = event.target.dataset.ddKey;
     if (patientKey) {
       dongdoState.patient[patientKey] = event.target.value;
+      syncDongDoSharedState();
       if (patientKey === "dominant") renderDongDo();
     }
     if (eye && key) {
@@ -739,6 +798,7 @@ function attachDongDoEvents() {
     const deletePlan = event.target.closest("[data-dd-delete-plan]");
     if (tab) { dongdoState.activeTab = tab.dataset.ddTab; renderDongDo(); }
     if (action?.dataset.ddAction === "save-sync") handleDongDoSave();
+    if (action?.dataset.ddAction === "to-planning") handleSendToPlanning();
     if (action?.dataset.ddAction === "print") handleDongDoPrint();
     if (action?.dataset.ddAction === "sheets") alert("Google Sheets URL có thể lưu ở localStorage key visionid_sheets_url. Bản hiện tại đã giữ cấu trúc để mở rộng sync.");
     if (corvis) {
@@ -768,5 +828,6 @@ function attachDongDoEvents() {
 }
 
 attachDongDoEvents();
+window.addEventListener("visionid:planning-updated", (event) => applyPlanningSharedState(event.detail));
 recalcDongDo();
 renderDongDo();

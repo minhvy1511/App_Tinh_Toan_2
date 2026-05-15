@@ -1,7 +1,7 @@
 from flask import Flask, jsonify, render_template, request
 
 from calculations import ABLATION_TABLES, calculate_eye, calculate_plan, suggested_target
-from database import init_db, list_plans, save_plan, update_plan
+from database import delete_plan, init_db, list_plans, save_plan, update_plan
 
 
 app = Flask(__name__)
@@ -57,6 +57,13 @@ def revise_plan(plan_id):
     if not record:
         return jsonify({"error": "Plan not found"}), 404
     return jsonify(record)
+
+
+@app.delete("/api/plans/<int:plan_id>")
+def remove_plan(plan_id):
+    if not delete_plan(plan_id):
+        return jsonify({"error": "Plan not found"}), 404
+    return "", 204
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>VISION ID</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=20260515-overview-flow1">
   </head>
   <body>
     <aside class="sidebar">
@@ -27,9 +27,9 @@
           <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M9 15h6"/><path d="M9 11h2"/></svg>
           <span>Hoạch định PT</span>
         </button>
-        <button class="nav-item" data-screen="audit">
-          <svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M8 19v-7"/><path d="M12 19V9"/><path d="M16 19v-4"/><path d="M20 19V7"/></svg>
-          <span>Kiểm toán</span>
+        <button class="nav-item" data-screen="phakic">
+          <svg viewBox="0 0 24 24"><path d="M3 12s3.5-5 9-5 9 5 9 5-3.5 5-9 5-9-5-9-5Z"/><circle cx="12" cy="12" r="2.5"/><path d="M8 4.5 6.5 7"/><path d="M16 4.5 17.5 7"/></svg>
+          <span>Tính toán Phakic</span>
         </button>
         <button class="nav-item" data-screen="overview">
           <svg viewBox="0 0 24 24"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg>
@@ -53,68 +53,16 @@
           <button class="primary-action" data-goto="planning">+ Kế hoạch mới</button>
         </div>
 
-        <div class="stats-grid">
-          <article class="stat-card">
-            <div class="stat-icon blue">
-              <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>
-            </div>
-            <strong id="statPatients">0</strong>
-            <span>Tổng hồ sơ</span>
-          </article>
-          <article class="stat-card">
-            <div class="stat-icon indigo">
-              <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M9 15h6"/></svg>
-            </div>
-            <strong id="statPlans">0</strong>
-            <span>Kế hoạch PT</span>
-          </article>
-          <article class="stat-card">
-            <div class="stat-icon green">
-              <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/><circle cx="12" cy="12" r="10"/></svg>
-            </div>
-            <strong id="statDone">0</strong>
-            <span>Đã phẫu thuật</span>
-          </article>
-          <article class="stat-card">
-            <div class="stat-icon amber">
-              <svg viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-            </div>
-            <strong id="statFollowUp">0</strong>
-            <span>Tái khám</span>
-          </article>
-        </div>
-
         <div class="dashboard-grid">
           <section class="panel">
             <h2>Phân bổ loại phẫu thuật</h2>
             <div id="procedureBreakdown" class="breakdown"></div>
-          </section>
-          <section class="panel">
-            <h2>Truy cập nhanh</h2>
-            <div class="quick-links">
-              <button data-goto="audit">
-                <span class="mini-icon"><svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M8 19v-7"/><path d="M12 19V9"/><path d="M16 19v-4"/><path d="M20 19V7"/></svg></span>
-                <span><strong>Danh sách lưu trữ</strong><small>Xem lại toàn bộ ca đã lưu</small></span>
-                <b>→</b>
-              </button>
-              <button data-goto="planning">
-                <span class="mini-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg></span>
-                <span><strong>Hoạch định phẫu thuật</strong><small>Tính toán & kế hoạch</small></span>
-                <b>→</b>
-              </button>
-              <button data-goto="audit">
-                <span class="mini-icon"><svg viewBox="0 0 24 24"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/></svg></span>
-                <span><strong>Kiểm toán kết quả</strong><small>Nomogram drift & phân tích</small></span>
-                <b>→</b>
-              </button>
-            </div>
           </section>
         </div>
 
         <section class="panel recent-panel">
           <div class="panel-head">
             <h2>Kế hoạch phẫu thuật gần đây</h2>
-            <button class="ghost-link" data-goto="audit">Xem tất cả</button>
           </div>
           <div id="recentPlans" class="recent-list"></div>
         </section>
@@ -148,6 +96,14 @@
             </div>
           </div>
 
+          <div class="form-section clinical-refraction-section">
+            <div class="section-title-row">
+              <h2>Khúc xạ lâm sàng</h2>
+              <span>UCVA, kính cũ, manifest, cycloplegic và soi bóng đồng tử</span>
+            </div>
+            <div id="clinicalRefractionTable" class="clinical-refraction-wrap"></div>
+          </div>
+
           <div class="eye-layout">
             <section class="eye-panel" data-eye="od">
               <h2>Mắt phải (OD)</h2>
@@ -172,20 +128,63 @@
         <div id="planResult" class="result-area"></div>
       </section>
 
-      <section id="audit" class="screen">
+      <section id="phakic" class="screen">
         <div class="page-head">
           <div>
-            <h1>Kiểm toán & lưu trữ</h1>
-            <p>Danh sách tổng toàn bộ ca đã lưu, kèm PTA/RSB và trạng thái an toàn.</p>
+            <h1>Tính toán Phakic</h1>
+            <p>Nhập khúc xạ, kích thước nội nhãn, cảnh báo ACD/CD và lưu kế hoạch Phakic IOL.</p>
           </div>
         </div>
-        <section class="panel">
-          <div id="auditList" class="table-list"></div>
-        </section>
+
+        <form id="phakicForm" class="panel form-panel">
+          <input type="hidden" name="plan_type" value="phakic">
+          <div class="form-section">
+            <h2>Thông tin bệnh nhân</h2>
+            <div class="patient-grid">
+              <label>Bệnh nhân<input name="patient.name" value="BÙI ĐĂNG TOÀN"></label>
+              <label>Năm sinh<input name="patient.yob" type="number" value="1981"></label>
+              <label>Mã ID<input name="patient.id" value="BN-2026-001"></label>
+              <label>Phẫu thuật viên<input name="patient.surgeon" value="BS THỦY"></label>
+              <fieldset>
+                <legend>Mắt chủ đạo</legend>
+                <label class="radio"><input type="radio" name="patient.dominant_eye" value="OD" checked> OD</label>
+                <label class="radio"><input type="radio" name="patient.dominant_eye" value="OS"> OS</label>
+              </fieldset>
+            </div>
+          </div>
+
+          <div class="form-section clinical-refraction-section">
+            <div class="section-title-row">
+              <h2>Khúc xạ lâm sàng</h2>
+              <span>Đồng bộ với Hoạch định PT</span>
+            </div>
+            <div id="phakicRefractionTable" class="clinical-refraction-wrap"></div>
+          </div>
+
+          <div class="eye-layout phakic-eye-layout">
+            <section class="eye-panel phakic-eye-panel" data-phakic-eye="od">
+              <h2>Mắt phải (OD)</h2>
+              <div class="phakic-fields"></div>
+            </section>
+            <section class="eye-panel phakic-eye-panel" data-phakic-eye="os">
+              <h2>Mắt trái (OS)</h2>
+              <div class="phakic-fields"></div>
+            </section>
+          </div>
+
+          <label class="notes">Ghi chú Phakic IOL
+            <textarea name="notes" rows="4" placeholder="Ghi chú sizing, vault dự kiến, cảnh báo an toàn..."></textarea>
+          </label>
+
+          <div class="actions">
+            <button type="submit" class="primary-action">Lưu kế hoạch Phakic</button>
+          </div>
+        </form>
       </section>
+
     </main>
 
-    <script src="{{ url_for('static', filename='app.js') }}"></script>
-    <script src="{{ url_for('static', filename='dongdo.js') }}?v=20260515-directflow1"></script>
+    <script src="{{ url_for('static', filename='app.js') }}?v=20260515-phakic1"></script>
+    <script src="{{ url_for('static', filename='dongdo.js') }}?v=20260515-sharedcalc1"></script>
   </body>
 </html>

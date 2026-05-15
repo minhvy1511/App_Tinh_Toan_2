@@ -83,6 +83,16 @@ def update_plan(plan_id, payload, result, notes=""):
         return record.to_dict()
 
 
+def delete_plan(plan_id):
+    with SessionLocal() as session:
+        record = session.get(SurgicalPlan, plan_id)
+        if not record:
+            return False
+        session.delete(record)
+        session.commit()
+        return True
+
+
 def list_plans(limit=None):
     with SessionLocal() as session:
         query = session.query(SurgicalPlan).order_by(SurgicalPlan.created_at.desc())

@@ -1,8 +1,12 @@
 ABLATION_TABLES = {
     "SMILE Pro": {1: 39, 2: 55, 3: 75, 4: 84, 5: 99, 6: 112, 7: 126, 8: 139, 9: 152, 10: 167, 11: 180},
+    "CLEAR": {1: 39, 2: 55, 3: 75, 4: 84, 5: 99, 6: 112, 7: 126, 8: 139, 9: 152, 10: 167, 11: 180},
     "SmartSight": {1: 26, 2: 50, 3: 63, 4: 76, 5: 89, 6: 101, 7: 113, 8: 125, 9: 137, 10: 148, 11: 159, 12: 170},
     "Femto-LASIK": {1: 16, 2: 32, 3: 48, 4: 63, 5: 79, 6: 94, 7: 109, 8: 124, 9: 139, 10: 154, 11: 166, 12: 178},
+    "Trans-PRK": {1: 71, 2: 86, 3: 100, 4: 115, 5: 130, 6: 145, 7: 159, 8: 174},
     "SmartSurface": {1: 71, 2: 86, 3: 100, 4: 115, 5: 130, 6: 145, 7: 159, 8: 174},
+    "Presbyond": {1: 16, 2: 32, 3: 48, 4: 63, 5: 79, 6: 94, 7: 109, 8: 124, 9: 139, 10: 154, 11: 166, 12: 178},
+    "PresbyMAX": {1: 71, 2: 86, 3: 100, 4: 115, 5: 130, 6: 145, 7: 159, 8: 174},
 }
 
 
@@ -29,6 +33,14 @@ def get_oz_factor(oz):
     return factors.get(str(oz), 1.0)
 
 
+def default_flap_cap(proc):
+    if proc in ("Trans-PRK", "SmartSurface"):
+        return 0
+    if proc in ("Femto-LASIK", "Presbyond", "PresbyMAX"):
+        return 110
+    return 120
+
+
 def suggested_target(patient_age, is_dominant):
     return -1.0 if patient_age >= 40 and not is_dominant else 0.0
 
@@ -43,7 +55,7 @@ def calculate_eye(payload):
     ls_cyl = _number(payload.get("ls_cyl"), -1)
     ls_targ = _number(payload.get("ls_targ"), 0)
     proc = payload.get("proc") or "SMILE Pro"
-    flap = _number(payload.get("flap"), 120)
+    flap = _number(payload.get("flap"), default_flap_cap(proc))
     oz = str(payload.get("oz") or "6.5")
     mf_va = str(payload.get("mf_va") or "20/20").strip()
 
@@ -52,8 +64,8 @@ def calculate_eye(payload):
     total_d = abs(final_laser_sph) + abs(ls_cyl)
     base_abl = interp_ablation(proc, total_d)
     final_abl = round(base_abl * get_oz_factor(oz))
-    eff_flap = 0 if proc == "SmartSurface" else flap
-    rsb = round(thin - eff_flap - final_abl)
+    eff_flap = 0 if proc in ("Trans-PRK", "SmartSurface") else flap
+    rsb = round(cct - eff_flap - final_abl)
     total_consumption = eff_flap + final_abl
     pta = round((total_consumption / cct) * 100, 1) if cct > 0 else 0
     post_k = round(km - (0.8 * total_d), 2)
@@ -61,13 +73,13 @@ def calculate_eye(payload):
     warnings = []
     if pta < 38:
         warnings.append({"level": "success", "message": f"PTA an toàn ({pta}%)."})
-    elif 38 <= pta <= 43:
+    elif 38 <= pta <= 40:
         warnings.append({"level": "warning", "message": f"PTA cảnh báo ({pta}%): lưu ý kiểm tra Corvis ST hoặc bổ sung Crosslinking."})
     else:
         warnings.append({"level": "danger", "message": f"PTA mức nguy cơ cao ({pta}%): cân nhắc phương pháp Phakic ICL."})
 
-    if rsb < 280:
-        warnings.append({"level": "warning", "message": f"RSB mỏng ({rsb} um): cân nhắc giảm Cap/OZ hoặc chuyển Phakic ICL."})
+    if rsb < 300:
+        warnings.append({"level": "danger", "message": f"RSB {rsb} um < 300 um: Nguy cơ cao - Ectasia risk."})
     if post_k <= 34:
         warnings.append({"level": "warning", "message": f"Post-op K bất thường ({post_k} D): cần tư vấn kỹ trước mổ."})
     if pupil > _number(oz):
@@ -97,6 +109,14 @@ def calculate_eye(payload):
 
 
 def calculate_plan(payload):
+    if payload.get("plan_type") == "phakic":
+        return {
+            "patient_age": int(payload.get("current_year") or 2026) - int(_number(payload.get("patient", {}).get("yob"), 1981)),
+            "eyes": {
+                "od": {"procedure": "Phakic IOL", "warnings": []},
+                "os": {"procedure": "Phakic IOL", "warnings": []},
+            },
+        }
     current_year = int(payload.get("current_year") or 2026)
     yob = int(_number(payload.get("patient", {}).get("yob"), 1981))
     dominant_eye = payload.get("patient", {}).get("dominant_eye") or "OD"
