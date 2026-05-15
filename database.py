@@ -8,13 +8,25 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 Base = declarative_base()
 
-
 def _database_url():
     url = os.getenv("DATABASE_URL")
     if url:
         return url.replace("postgres://", "postgresql+psycopg://", 1)
-    return "sqlite:///instance/app.db"
-
+        
+    # --- ĐOẠN SỬA ĐỔI GIÚP CHẠY MƯỢT TRÊN RENDER ---
+    # 1. Lấy đường dẫn tuyệt đối của thư mục chứa file database.py
+    base_dir = os.path.abspath(os.path.dirname(__file__))
+    instance_dir = os.path.join(base_dir, "instance")
+    
+    # 2. Tự động tạo thư mục instance nếu Render chưa có
+    if not os.path.exists(instance_dir):
+        os.makedirs(instance_dir)
+        
+    # 3. Tạo đường dẫn tuyệt đối đến file database
+    db_path = os.path.join(instance_dir, "app.db")
+    
+    # Trả về chuỗi kết nối chuẩn (Ví dụ: sqlite:////opt/render/project/src/instance/app.db)
+    return f"sqlite:///{db_path}"
 
 engine = create_engine(_database_url(), future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
