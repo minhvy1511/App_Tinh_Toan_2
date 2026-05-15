@@ -5,7 +5,6 @@ const DONGDO_CREATOR_SUBTITLE = "Công cụ tính toán phẫu thuật khúc x�
 const DONGDO_PROCEDURES = ["SMILE Pro", "CLEAR", "SmartSight", "Femto-LASIK", "Trans-PRK", "Presbyond", "PresbyMAX"];
 const DONGDO_NAVY = "#0a3d6b";
 const DONGDO_TEAL = "#2ab3b8";
-const LS_PATIENTS = "visionid_patients";
 const LS_PLANS = "visionid_plans";
 const LS_SHEETS_URL = "visionid_sheets_url";
 
@@ -73,7 +72,7 @@ function calcPTA(procedure, flapCap, ablation, cct) {
 function ptaLevel(pta, procedure = "") {
   if (pta === null || isNaN(pta)) return "unknown";
   if (procedure === "Trans-PRK") return pta < 35 ? "safe" : pta <= 40 ? "caution" : "danger";
-  return pta < 38 ? "safe" : pta <= 43 ? "caution" : "danger";
+  return pta < 38 ? "safe" : pta <= 40 ? "caution" : "danger";
 }
 
 function ptaLabel(pta, procedure = "") {
@@ -160,11 +159,8 @@ function calcEye(eye) {
 
 const dongdoState = {
   activeTab: "planning",
-  patients: loadLS(LS_PATIENTS, []),
   plans: loadLS(LS_PLANS, []),
-  patientSearch: "",
-  newPatient: { name: "", id: "", year: "" },
-  patient: { name: "", id: "", year: "" },
+  patient: { name: "", id: "", year: "", dominant: "OD" },
   surgeon: "Dr. Phương Thủy",
   od: defaultEye(),
   os: defaultEye(),
@@ -184,6 +180,32 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[ch]));
 }
 
+function numOrNull(value) {
+  const n = parseFloat(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function eyeSafetyAlerts(eye, calc) {
+  const alerts = [];
+  const thinnest = numOrNull(eye.thinnest_point);
+  const cct = numOrNull(eye.cct);
+  if (thinnest !== null && thinnest < 480) alerts.push({ level: "danger", text: `Thinnest ${thinnest} um: giác mạc quá mỏng, cân nhắc dừng laser hoặc chuyển Phakic ICL.` });
+  else if (thinnest !== null && thinnest < 500) alerts.push({ level: "warning", text: `Thinnest ${thinnest} um: vùng cận ngưỡng, cần đánh giá bản đồ giác mạc và Corvis ST.` });
+  if (cct !== null && cct < 480) alerts.push({ level: "danger", text: `CCT ${cct} um: nguy cơ an toàn cao, ưu tiên loại trừ laser hoặc cân nhắc Phakic ICL.` });
+  else if (cct !== null && cct < 500) alerts.push({ level: "warning", text: `CCT ${cct} um: cần thận trọng khi chọn procedure, flap/cap và OZ.` });
+  if (eye.corvis_status === "caution") alerts.push({ level: "warning", text: "Corvis ST cảnh báo: cân nhắc Crosslinking hoặc giảm mức can thiệp mô." });
+  if (eye.corvis_status === "danger") alerts.push({ level: "danger", text: "Corvis ST bất thường: cân nhắc dừng laser và chuyển hướng Phakic ICL." });
+  if (calc?.pta !== null && calc?.pta > 40) alerts.push({ level: "danger", text: `PTA ${calc.pta}% > 40%: Nguy cơ cao - Ectasia risk.` });
+  if (calc?.rsb !== null && calc?.rsb < 300) alerts.push({ level: "danger", text: `RSB ${calc.rsb} um < 300 um: Nguy cơ cao - Ectasia risk.` });
+  return alerts;
+}
+
+function renderClinicalAlerts(eye, calc) {
+  const alerts = eyeSafetyAlerts(eye, calc);
+  if (!alerts.length) return "";
+  return `<div class="dd-clinical-alerts">${alerts.map((alert) => `<div class="dd-alert ${alert.level}">${alert.text}</div>`).join("")}</div>`;
+}
+
 function ddSelect(label, key, eye, options) {
   const value = dongdoState[eye][key];
   return `<label>${label}<select data-dd-eye="${eye}" data-dd-key="${key}">${options.map((item) => `<option value="${item}" ${item === value ? "selected" : ""}>${item}</option>`).join("")}</select></label>`;
@@ -194,7 +216,6 @@ function renderDongDo() {
   if (!root) return;
   const tabs = [
     ["planning", "Tính toán nhanh"],
-    ["patients", `Bệnh nhân (${dongdoState.patients.length})`],
     ["history", `Kế hoạch đã lưu (${dongdoState.plans.length})`],
   ];
   root.innerHTML = `
@@ -216,7 +237,6 @@ function renderDongDo() {
     ${dongdoState.saveMsg ? `<div class="notice ${dongdoState.saveMsg.startsWith("✓") ? "success" : "warning"}">${dongdoState.saveMsg}</div>` : ""}
     <div class="dd-tabs">${tabs.map(([key, label]) => `<button class="${dongdoState.activeTab === key ? "active" : ""}" data-dd-tab="${key}" tabindex="-1">${label}</button>`).join("")}</div>
     ${dongdoState.activeTab === "planning" ? renderDongDoPlanning() : ""}
-    ${dongdoState.activeTab === "patients" ? renderDongDoPatients() : ""}
     ${dongdoState.activeTab === "history" ? renderDongDoHistory() : ""}
   `;
   installDongDoTabOrder();
@@ -232,6 +252,7 @@ function renderDongDoPlanning() {
         <label>Patient Name *<input data-dd-patient="name" value="${escapeHtml(dongdoState.patient.name)}" placeholder="John Doe"></label>
         <label>Patient ID<input data-dd-patient="id" value="${escapeHtml(dongdoState.patient.id)}" placeholder="BN-2026-001"></label>
         <label>Year of Birth<input data-dd-patient="year" type="number" value="${escapeHtml(dongdoState.patient.year)}" placeholder="1996"></label>
+        <label>Dominant<select data-dd-patient="dominant"><option value="OD" ${dongdoState.patient.dominant === "OD" ? "selected" : ""}>OD</option><option value="OS" ${dongdoState.patient.dominant === "OS" ? "selected" : ""}>OS</option></select></label>
         <label>Surgeon<input value="${escapeHtml(dongdoState.surgeon)}" disabled></label>
       </div>
     </section>
@@ -253,7 +274,7 @@ function renderDongDoEye(eye, title, code, syncNote) {
   const highCyl = highCylAlert(data.cyl);
   return `
     <section class="dd-eye-card">
-      <header><b>${code}</b><strong>${title}</strong>${syncNote ? "<span>* Procedure/OZ/Cap syncs to OS</span>" : ""}</header>
+      <header><b>${code}</b><strong>${title}${dongdoState.patient.dominant === code ? " ★" : ""}</strong>${syncNote ? "<span>* Procedure/OZ/Cap syncs to OS</span>" : ""}</header>
       <div class="dd-eye-body">
         ${ddGroup("1. Corneal Biometrics", `
           <div class="dd-grid cols-3">
@@ -264,11 +285,11 @@ function renderDongDoEye(eye, title, code, syncNote) {
             ${ddField("Pre-op K2 (D)", "k2", eye, 'type="number" step="0.01" placeholder="44.00"')}
             ${ddField("HOA RMS (um)", "hoa_rms", eye, 'type="number" step="0.01" placeholder="0.35"')}
             ${ddField("White-to-White (mm)", "wtw", eye, 'type="number" step="0.1" placeholder="11.5"')}
-            ${ddSelect("Ocular Dominance", "ocular_dominance", eye, ["Dominant", "Non-Dominant"])}
             ${ddField("TBUT (sec)", "tbut", eye, 'type="number" step="1" placeholder="10"')}
           </div>
           ${hoaA ? `<div class="dd-alert ${hoaA.level}">${hoaA.text}</div>` : ""}
           ${tbutA ? `<div class="dd-alert ${tbutA.level}">${tbutA.text}</div>` : ""}
+          ${renderClinicalAlerts(data, calc)}
           ${renderPostK(calc)}
           ${calc?.topoAlert ? `<div class="dd-alert danger">Monitor Corneal Topography - CCT - Thinnest > 15 um</div>` : ""}
           <div class="dd-corvit">
@@ -339,8 +360,9 @@ function renderDongDoResults(calc, data) {
         <div><span>Total Diopters</span><strong>${calc.totalD.toFixed(2)} D</strong></div>
       </div>
       <div class="dd-main-metric"><span>${data.procedure === "SMILE Pro" || data.procedure === "CLEAR" ? "Lenticule (Zeiss Forum)" : "Ablation"}</span><strong>${calc.ablation} um</strong></div>
-      ${calc.rsb !== null ? `<div class="dd-main-metric ${calc.rsb >= 250 ? "safe" : "danger"}"><span>RSB ${calc.rsb < 250 ? "DANGER" : ""}</span><strong>${calc.rsb} um</strong></div>` : ""}
+      ${calc.rsb !== null ? `<div class="dd-main-metric ${calc.rsb >= 300 ? "safe" : "danger"}"><span>RSB ${calc.rsb < 300 ? "ECTASIA RISK" : ""}</span><strong>${calc.rsb} um</strong></div>` : ""}
       ${calc.pta !== null ? `<div class="dd-main-metric ${tier}"><span>PTA - ${ptaLabel(calc.pta, data.procedure)}</span><strong>${calc.pta}%</strong></div>` : ""}
+      ${renderClinicalAlerts(data, calc)}
       ${tier === "danger" ? `<div class="dd-alert danger">Consider Phakic ICL as an alternative procedure</div>` : ""}
       ${calc.nightRisk ? `<div class="dd-alert warning">Night Vision Risk: Mesopic Pupil > OZ</div>` : ""}
       ${calc.vaAlerts.map((a) => `<div class="dd-alert warning">${a.msg}</div>`).join("")}
@@ -361,33 +383,6 @@ function renderOzOptimization(data, calc) {
   return `<div class="dd-oz"><strong>OZ Optimization</strong><table><thead><tr><th>OZ</th><th>Ablation</th><th>RSB</th><th>PTA</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
-function renderDongDoPatients() {
-  return `
-    <section class="dd-panel">
-      <div class="dd-panel-title">Register New Patient</div>
-      <div class="dd-patient-grid">
-        <label>Patient Name *<input data-dd-new-patient="name" value="${escapeHtml(dongdoState.newPatient.name)}" placeholder="Full Name"></label>
-        <label>Patient ID<input data-dd-new-patient="id" value="${escapeHtml(dongdoState.newPatient.id)}" placeholder="BN-2026-001"></label>
-        <label>Year of Birth<input data-dd-new-patient="year" type="number" value="${escapeHtml(dongdoState.newPatient.year)}" placeholder="1996"></label>
-        <button data-dd-action="register" class="dd-submit" tabindex="-1">Register Patient</button>
-      </div>
-    </section>
-    <section class="dd-panel">
-      <div class="dd-search"><input data-dd-search value="${escapeHtml(dongdoState.patientSearch)}" placeholder="Search by name or ID..."><span>${filteredDongDoPatients().length} patient(s)</span></div>
-      <div class="dd-list">${filteredDongDoPatients().length ? filteredDongDoPatients().map(renderPatientRow).join("") : `<div class="dd-empty">No patients registered yet.</div>`}</div>
-    </section>
-  `;
-}
-
-function filteredDongDoPatients() {
-  const q = dongdoState.patientSearch.toLowerCase();
-  return dongdoState.patients.filter((p) => p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q));
-}
-
-function renderPatientRow(p, i) {
-  return `<article class="dd-row"><div class="dd-avatar">${escapeHtml(p.name[0] || "?")}</div><div><strong>${escapeHtml(p.name)}</strong><span>${escapeHtml(p.id)} · YOB: ${escapeHtml(p.year || "—")} · Registered: ${escapeHtml(p.registered || "")}</span></div><button data-dd-select-patient="${i}" tabindex="-1">Open Plan</button></article>`;
-}
-
 function renderDongDoHistory() {
   return `<section class="dd-panel"><div class="dd-panel-title">Saved Plans History</div><div class="dd-list">${dongdoState.plans.length ? dongdoState.plans.map(renderDongDoPlan).join("") : `<div class="dd-empty">No saved plans yet. Use Save & Sync in the planning tab.</div>`}</div></section>`;
 }
@@ -395,8 +390,10 @@ function renderDongDoHistory() {
 function renderDongDoPlan(plan) {
   const odPta = plan.calcOD?.pta;
   const osPta = plan.calcOS?.pta;
-  const risk = (odPta !== null && odPta !== undefined && ptaLevel(odPta, plan.od?.procedure) !== "safe") || (osPta !== null && osPta !== undefined && ptaLevel(osPta, plan.os?.procedure) !== "safe");
-  return `<article class="dd-row"><div><strong>${escapeHtml(plan.patient.name)}</strong>${risk ? `<em>Risk</em>` : ""}<span>ID: ${escapeHtml(plan.patient.id)} · YOB: ${escapeHtml(plan.patient.year || "—")} · Saved: ${escapeHtml(plan.savedAt)}</span><span>OD: ${plan.od?.procedure || "—"} · OS: ${plan.os?.procedure || "—"}</span></div><button data-dd-load-plan="${plan.id}" tabindex="-1">Load</button><button data-dd-delete-plan="${plan.id}" class="dd-delete" tabindex="-1">Delete</button></article>`;
+  const odRsb = plan.calcOD?.rsb;
+  const osRsb = plan.calcOS?.rsb;
+  const risk = (odPta !== null && odPta !== undefined && odPta > 40) || (osPta !== null && osPta !== undefined && osPta > 40) || (odRsb !== null && odRsb !== undefined && odRsb < 300) || (osRsb !== null && osRsb !== undefined && osRsb < 300);
+  return `<article class="dd-row ${risk ? "dd-row-danger" : ""}"><div><strong>${escapeHtml(plan.patient.name)}</strong>${risk ? `<em>Nguy cơ cao - Ectasia risk</em>` : ""}<span>ID: ${escapeHtml(plan.patient.id)} · YOB: ${escapeHtml(plan.patient.year || "—")} · Saved: ${escapeHtml(plan.savedAt)}</span><span>OD PTA/RSB: ${odPta ?? "—"}% / ${odRsb ?? "—"} um · OS PTA/RSB: ${osPta ?? "—"}% / ${osRsb ?? "—"} um</span></div><button data-dd-load-plan="${plan.id}" tabindex="-1">Load</button><button data-dd-delete-plan="${plan.id}" class="dd-delete" tabindex="-1">Delete</button></article>`;
 }
 
 function handleDongDoCalculate() {
@@ -487,7 +484,7 @@ function handleDongDoPrint() {
     if (highCyl) alerts.push({ cls: "purple", text: highCyl });
     if (calc?.topoAlert) alerts.push({ cls: "danger", text: "Monitor Corneal Topography: CCT - Thinnest > 15 um" });
     if (calc?.nightRisk) alerts.push({ cls: "warning", text: "Night Vision Risk: Mesopic Pupil > OZ" });
-    if (calc?.rsb !== null && calc?.rsb < 250) alerts.push({ cls: "danger", text: `RSB nguy hiểm: ${calc.rsb} um` });
+    if (calc?.rsb !== null && calc?.rsb < 300) alerts.push({ cls: "danger", text: `RSB nguy hiểm: ${calc.rsb} um - Ectasia risk` });
     if (calc?.pta !== null) {
       const tier = ptaLevel(calc.pta, eye.procedure);
       if (tier === "caution") alerts.push({ cls: "warning", text: `PTA At Risk: ${calc.pta}% - cân nhắc Crosslinking` });
@@ -510,7 +507,7 @@ function handleDongDoPrint() {
       <div class="result-grid">
         ${resultBadge("Input Sphere", calc ? `${signed(calc.finalLaserSph)} D` : "—", "primary")}
         ${resultBadge("Ablation", calcValue(calc?.ablation, " um"), "primary")}
-        ${resultBadge("RSB", calcValue(calc?.rsb, " um"), calc?.rsb !== null && calc?.rsb < 250 ? "danger" : "success")}
+        ${resultBadge("RSB", calcValue(calc?.rsb, " um"), calc?.rsb !== null && calc?.rsb < 300 ? "danger" : "success")}
         ${resultBadge("PTA", calcValue(calc?.pta, "%"), tier === "danger" ? "danger" : tier === "caution" ? "warning" : "success")}
       </div>
       <table>
@@ -519,7 +516,6 @@ function handleDongDoPrint() {
         ${row("Mesopic Pupil", raw(eye.pupil_mesopic, " mm"))}
         ${row("K1 / K2", `${raw(eye.k1, " D")} / ${raw(eye.k2, " D")}`)}
         ${row("WTW / HOA RMS / TBUT", `${raw(eye.wtw, " mm")} / ${raw(eye.hoa_rms, " um")} / ${raw(eye.tbut, " sec")}`)}
-        ${row("Ocular Dominance", raw(eye.ocular_dominance))}
         ${row("Corvit ST", `<b>${corvit.label}</b><br><small>${corvit.note}</small>`, corvit.cls)}
         ${section("2. Manifest Refraction")}
         ${row("Sphere / Cylinder", `${raw(eye.mf_sph, " D")} / ${raw(eye.mf_cyl, " D")}`)}
@@ -534,7 +530,7 @@ function handleDongDoPrint() {
         ${row("Input Sphere / Cylinder", `${calc ? signed(calc.finalLaserSph) : "—"} / ${calc ? signed(calc.cyl) : "—"} D`)}
         ${row("Total Diopters", calcValue(calc?.totalD?.toFixed ? calc.totalD.toFixed(2) : calc?.totalD, " D"))}
         ${row("Ablation / Lenticule", calcValue(calc?.ablation, " um"), "primary")}
-        ${row("RSB", calcValue(calc?.rsb, " um"), calc?.rsb !== null && calc?.rsb < 250 ? "danger" : "success")}
+        ${row("RSB", calcValue(calc?.rsb, " um"), calc?.rsb !== null && calc?.rsb < 300 ? "danger" : "success")}
         ${row("PTA", calcValue(calc?.pta, "%"), tier === "danger" ? "danger" : tier === "caution" ? "warning" : "success")}
         ${row("Post-op K1 / K2", `<span class="${postKClass(calc?.postK1)}">${calcValue(calc?.postK1, " D")}</span> / <span class="${postKClass(calc?.postK2)}">${calcValue(calc?.postK2, " D")}</span>`)}
         ${row("Predicted VA", raw(calc?.predictedVA))}
@@ -558,7 +554,7 @@ function handleDongDoPrint() {
     h1{margin:0;color:${DONGDO_NAVY};font-size:17px;line-height:1.1}
     .head p{margin:2px 0 0;color:#64748b;font-size:10px}
     .doc-title{text-align:right;color:${DONGDO_NAVY};font-weight:800;font-size:13px}
-    .patient{display:grid;grid-template-columns:2fr 1fr 1fr 1.4fr 1.2fr;gap:6px;background:#f0f8ff;border:1px solid #c5d9f0;border-radius:6px;padding:7px 9px;margin-bottom:8px}
+    .patient{display:grid;grid-template-columns:2fr 1fr 1fr .9fr 1.4fr 1.2fr;gap:6px;background:#f0f8ff;border:1px solid #c5d9f0;border-radius:6px;padding:7px 9px;margin-bottom:8px}
     .pf label{display:block;color:#64748b;text-transform:uppercase;font-size:8px;font-weight:700}
     .pf span{display:block;color:#0f172a;font-weight:800;font-size:10.5px;margin-top:2px}
     .global-risk{margin-bottom:8px;padding:6px 9px;border-radius:6px;border:1.5px solid #fca5a5;background:#fef2f2;color:#991b1b;font-weight:800}
@@ -600,6 +596,7 @@ function handleDongDoPrint() {
       <div class="pf"><label>Patient Name</label><span>${escapeHtml(dongdoState.patient.name || "—")}</span></div>
       <div class="pf"><label>Patient ID</label><span>${escapeHtml(dongdoState.patient.id || "—")}</span></div>
       <div class="pf"><label>Year of Birth</label><span>${escapeHtml(dongdoState.patient.year || "—")}</span></div>
+      <div class="pf"><label>Dominant</label><span>${escapeHtml(dongdoState.patient.dominant || "OD")}</span></div>
       <div class="pf"><label>Surgeon</label><span>${escapeHtml(dongdoState.surgeon)}</span></div>
       <div class="pf"><label>Printed</label><span>${new Date().toLocaleString("en-GB")}</span></div>
     </div>
@@ -704,24 +701,26 @@ function attachDongDoEvents() {
 
   document.addEventListener("input", (event) => {
     const patientKey = event.target.dataset.ddPatient;
-    const newPatientKey = event.target.dataset.ddNewPatient;
     const eye = event.target.dataset.ddEye;
     const key = event.target.dataset.ddKey;
-    if (patientKey) dongdoState.patient[patientKey] = event.target.value;
-    if (newPatientKey) dongdoState.newPatient[newPatientKey] = event.target.value;
+    if (patientKey) {
+      dongdoState.patient[patientKey] = event.target.value;
+      if (patientKey === "dominant") renderDongDo();
+    }
     if (eye && key) {
       dongdoState[eye][key] = event.target.value;
       if (eye === "od" && ["procedure", "oz", "flap_cap", "incision"].includes(key)) dongdoState.os[key] = event.target.value;
       scheduleDongDoRefresh();
     }
-    if (event.target.dataset.ddSearch !== undefined) {
-      dongdoState.patientSearch = event.target.value;
-      renderDongDo();
-    }
   });
   document.addEventListener("change", (event) => {
+    const patientKey = event.target.dataset.ddPatient;
     const eye = event.target.dataset.ddEye;
     const key = event.target.dataset.ddKey;
+    if (patientKey) {
+      dongdoState.patient[patientKey] = event.target.value;
+      if (patientKey === "dominant") renderDongDo();
+    }
     if (eye && key) {
       dongdoState[eye][key] = event.target.value;
       if (eye === "od" && ["procedure", "oz", "flap_cap", "incision"].includes(key)) {
@@ -736,41 +735,22 @@ function attachDongDoEvents() {
     const tab = event.target.closest("[data-dd-tab]");
     const action = event.target.closest("[data-dd-action]");
     const corvis = event.target.closest("[data-dd-corvis]");
-    const selectPatient = event.target.closest("[data-dd-select-patient]");
     const loadPlan = event.target.closest("[data-dd-load-plan]");
     const deletePlan = event.target.closest("[data-dd-delete-plan]");
     if (tab) { dongdoState.activeTab = tab.dataset.ddTab; renderDongDo(); }
     if (action?.dataset.ddAction === "save-sync") handleDongDoSave();
     if (action?.dataset.ddAction === "print") handleDongDoPrint();
     if (action?.dataset.ddAction === "sheets") alert("Google Sheets URL có thể lưu ở localStorage key visionid_sheets_url. Bản hiện tại đã giữ cấu trúc để mở rộng sync.");
-    if (action?.dataset.ddAction === "register") {
-      if (!dongdoState.newPatient.name.trim()) return;
-      const p = { ...dongdoState.newPatient, id: dongdoState.newPatient.id || `BN-${Date.now()}`, registered: new Date().toLocaleDateString("en-GB") };
-      dongdoState.patients = [p, ...dongdoState.patients];
-      dongdoState.newPatient = { name: "", id: "", year: "" };
-      saveLS(LS_PATIENTS, dongdoState.patients);
-      renderDongDo();
-    }
     if (corvis) {
       const [eye, status] = corvis.dataset.ddCorvis.split(":");
       dongdoState[eye].corvis_status = status;
       recalcDongDo();
       renderDongDo();
     }
-    if (selectPatient) {
-      const patient = filteredDongDoPatients()[Number(selectPatient.dataset.ddSelectPatient)];
-      dongdoState.patient = { name: patient.name, id: patient.id, year: patient.year };
-      dongdoState.od = defaultEye();
-      dongdoState.os = defaultEye();
-      dongdoState.calcOD = null;
-      dongdoState.calcOS = null;
-      dongdoState.activeTab = "planning";
-      renderDongDo();
-    }
     if (loadPlan) {
       const plan = dongdoState.plans.find((item) => item.id === Number(loadPlan.dataset.ddLoadPlan));
       if (plan) {
-        dongdoState.patient = { ...plan.patient };
+        dongdoState.patient = { dominant: "OD", ...plan.patient };
         dongdoState.od = { ...plan.od };
         dongdoState.os = { ...plan.os };
         dongdoState.calcOD = plan.calcOD;

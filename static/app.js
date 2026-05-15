@@ -34,11 +34,14 @@ const displayProcedures = [
 
 let appConfig = { procedures: [], optical_zones: [] };
 let plansCache = [];
+let editingPlanId = null;
 
 function gotoScreen(screenId) {
+  const target = document.getElementById(screenId);
+  if (!target) return;
   document.querySelectorAll(".screen").forEach((screen) => screen.classList.remove("active"));
   document.querySelectorAll(".nav-item").forEach((item) => item.classList.remove("active"));
-  document.getElementById(screenId).classList.add("active");
+  target.classList.add("active");
   document.querySelector(`[data-screen="${screenId}"]`)?.classList.add("active");
 }
 
@@ -78,9 +81,9 @@ function formToNestedObject(form) {
   return data;
 }
 
-async function postJson(url, body) {
+async function postJson(url, body, method = "POST") {
   const response = await fetch(url, {
-    method: "POST",
+    method,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
@@ -124,20 +127,24 @@ async function savePlan(event) {
   event.preventDefault();
   const data = formToNestedObject(event.currentTarget);
   data.current_year = new Date().getFullYear();
-  const record = await postJson("/api/plans", data);
+  const record = editingPlanId
+    ? await postJson(`/api/plans/${editingPlanId}`, data, "PUT")
+    : await postJson("/api/plans", data);
+  editingPlanId = null;
   document.getElementById("planResult").innerHTML = `
     <div class="notice success">Đã lưu kế hoạch #${record.id} cho bệnh nhân ${record.patient_name}.</div>
     ${renderEyeResult("Mắt phải (OD)", record.result.eyes.od)}
     ${renderEyeResult("Mắt trái (OS)", record.result.eyes.os)}
   `;
   await loadPlans();
+  gotoScreen("audit");
 }
 
 function riskLevel(plan) {
   const values = [plan.result.eyes.od, plan.result.eyes.os];
-  const high = values.some((eye) => eye.pta > 43 || eye.rsb < 250);
-  const medium = values.some((eye) => eye.pta >= 38 || eye.rsb < 280);
-  if (high) return ["high", "Nguy cơ cao"];
+  const high = values.some((eye) => eye.pta > 40 || eye.rsb < 300);
+  const medium = values.some((eye) => eye.pta >= 38 || eye.rsb < 320);
+  if (high) return ["high", "Nguy cơ cao - Ectasia risk"];
   if (medium) return ["medium", "Cần lưu ý"];
   return ["low", "Ổn định"];
 }
@@ -193,7 +200,7 @@ function renderRecentPlans(plans) {
   target.innerHTML = recent.map((plan) => {
     const [riskClass, riskText] = riskLevel(plan);
     return `
-      <article class="list-item">
+      <article class="list-item ${riskClass === "high" ? "audit-danger" : ""}">
         <div>
           <strong>${plan.patient_name}</strong>
           <span>${plan.patient_id || "Chưa có mã"} | ${plan.surgeon || "Chưa nhập bác sĩ"} | ${new Date(plan.created_at).toLocaleString("vi-VN")}</span>
@@ -204,39 +211,42 @@ function renderRecentPlans(plans) {
   }).join("");
 }
 
-function renderPatients(plans) {
-  const patients = uniquePatients(plans);
-  const target = document.getElementById("patientsList");
-  if (!patients.length) {
-    target.innerHTML = `<div class="empty-state">Chưa có bệnh nhân nào. <button class="ghost-link" data-goto="planning">Tạo kế hoạch đầu tiên</button></div>`;
-    return;
-  }
-  target.innerHTML = patients.map((plan) => `
-    <article class="list-item">
-      <div>
-        <strong>${plan.patient_name}</strong>
-        <span>Mã ID: ${plan.patient_id || "chưa nhập"} | Tuổi: ${plan.result.patient_age} | Phẫu thuật viên: ${plan.surgeon || "chưa nhập"}</span>
-      </div>
-      <button data-goto="planning">Tạo kế hoạch</button>
-    </article>
-  `).join("");
-}
-
 function renderAudit(plans) {
   const target = document.getElementById("auditList");
   if (!plans.length) {
-    target.innerHTML = `<div class="empty-state">Chưa có dữ liệu để kiểm toán.</div>`;
+    target.innerHTML = `<div class="empty-state">Chưa có kế hoạch nào được lưu. <button class="ghost-link" data-goto="planning">Tạo kế hoạch đầu tiên</button></div>`;
     return;
   }
   target.innerHTML = plans.map((plan) => {
     const [riskClass, riskText] = riskLevel(plan);
+    const od = plan.result.eyes.od;
+    const os = plan.result.eyes.os;
+    const odProc = plan.payload?.od?.proc || "OD";
+    const osProc = plan.payload?.os?.proc || "OS";
+    const metric = (eye, result) => `
+      <div class="audit-metric ${result.pta > 40 || result.rsb < 300 ? "danger" : "safe"}">
+        <span>${eye}</span>
+        <strong>PTA ${result.pta}%</strong>
+        <b>RSB ${result.rsb} um</b>
+      </div>
+    `;
     return `
-      <article class="list-item">
-        <div>
-          <strong>${plan.patient_name}</strong>
-          <span>OD PTA ${plan.result.eyes.od.pta}% / RSB ${plan.result.eyes.od.rsb} um | OS PTA ${plan.result.eyes.os.pta}% / RSB ${plan.result.eyes.os.rsb} um</span>
+      <article class="audit-card ${riskClass === "high" ? "audit-danger" : ""}">
+        <div class="audit-main">
+          <div>
+            <strong>${plan.patient_name}</strong>
+            <span>Mã ID: ${plan.patient_id || "chưa nhập"} | Phẫu thuật viên: ${plan.surgeon || "chưa nhập"} | ${new Date(plan.created_at).toLocaleString("vi-VN")}</span>
+            <small>Phương pháp: OD ${odProc} / OS ${osProc}</small>
+          </div>
+          <span class="risk ${riskClass}">${riskText}</span>
         </div>
-        <span class="risk ${riskClass}">${riskText}</span>
+        <div class="audit-metrics">
+          ${metric("OD", od)}
+          ${metric("OS", os)}
+        </div>
+        <div class="audit-actions">
+          <button type="button" data-review-plan="${plan.id}">Xem chi tiết/Chỉnh sửa</button>
+        </div>
       </article>
     `;
   }).join("");
@@ -248,14 +258,47 @@ async function loadPlans() {
   renderStats(plansCache);
   renderBreakdown(plansCache);
   renderRecentPlans(plansCache);
-  renderPatients(plansCache);
   renderAudit(plansCache);
+}
+
+function setFormValue(form, name, value) {
+  const fields = form.querySelectorAll(`[name="${name}"]`);
+  fields.forEach((field) => {
+    if (field.type === "radio") {
+      field.checked = String(field.value) === String(value);
+    } else if (value !== undefined && value !== null) {
+      field.value = value;
+    }
+  });
+}
+
+function loadPlanIntoForm(plan) {
+  editingPlanId = plan.id;
+  const form = document.getElementById("planForm");
+  const payload = plan.payload || {};
+  Object.entries(payload.patient || {}).forEach(([key, value]) => setFormValue(form, `patient.${key}`, value));
+  ["od", "os"].forEach((eye) => {
+    Object.entries(payload[eye] || {}).forEach(([key, value]) => setFormValue(form, `${eye}.${key}`, value));
+  });
+  setFormValue(form, "notes", plan.notes || "");
+  document.getElementById("planResult").innerHTML = `
+    <div class="notice warning">Đang xem lại kế hoạch #${plan.id}. Sau khi chỉnh sửa, bấm Lưu kế hoạch để cập nhật bản ghi này.</div>
+    ${renderEyeResult("Mắt phải (OD)", plan.result.eyes.od)}
+    ${renderEyeResult("Mắt trái (OS)", plan.result.eyes.os)}
+  `;
+  gotoScreen("planning");
 }
 
 function attachCalculation() {
   const planForm = document.getElementById("planForm");
   planForm.addEventListener("submit", savePlan);
   document.getElementById("previewPlan").addEventListener("click", calculatePlanPreview);
+  document.addEventListener("click", (event) => {
+    const review = event.target.closest("[data-review-plan]");
+    if (!review) return;
+    const plan = plansCache.find((item) => item.id === Number(review.dataset.reviewPlan));
+    if (plan) loadPlanIntoForm(plan);
+  });
 }
 
 function setTodayLabel() {

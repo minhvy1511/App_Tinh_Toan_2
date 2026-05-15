@@ -1,7 +1,7 @@
 from flask import Flask, jsonify, render_template, request
 
 from calculations import ABLATION_TABLES, calculate_eye, calculate_plan, suggested_target
-from database import init_db, list_plans, save_plan
+from database import init_db, list_plans, save_plan, update_plan
 
 
 app = Flask(__name__)
@@ -47,6 +47,16 @@ def create_plan():
     result = calculate_plan(payload)
     record = save_plan(payload, result, payload.get("notes") or "")
     return jsonify(record), 201
+
+
+@app.put("/api/plans/<int:plan_id>")
+def revise_plan(plan_id):
+    payload = request.get_json(silent=True) or {}
+    result = calculate_plan(payload)
+    record = update_plan(plan_id, payload, result, payload.get("notes") or "")
+    if not record:
+        return jsonify({"error": "Plan not found"}), 404
+    return jsonify(record)
 
 
 if __name__ == "__main__":

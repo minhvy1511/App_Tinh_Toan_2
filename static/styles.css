@@ -381,6 +381,93 @@ button {
   gap: 14px;
 }
 
+.list-item.audit-danger {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+.audit-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.audit-card.audit-danger {
+  border-color: #fca5a5;
+  background: #fff7f7;
+  box-shadow: inset 4px 0 0 #d92d20;
+}
+
+.audit-main {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 14px;
+  align-items: start;
+}
+
+.audit-main strong,
+.audit-main span,
+.audit-main small {
+  display: block;
+}
+
+.audit-main span,
+.audit-main small {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.audit-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.audit-metric {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #f8fafc;
+}
+
+.audit-metric span,
+.audit-metric strong,
+.audit-metric b {
+  display: block;
+}
+
+.audit-metric span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.audit-metric strong,
+.audit-metric b {
+  margin-top: 4px;
+}
+
+.audit-metric.safe {
+  border-color: #abefc6;
+  background: #ecfdf3;
+  color: var(--success);
+}
+
+.audit-metric.danger {
+  border-color: #fca5a5;
+  background: #fef2f2;
+  color: var(--danger);
+}
+
+.audit-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .list-item strong,
 .list-item span {
   display: block;
@@ -534,7 +621,7 @@ legend { padding: 0 4px; }
   }
   .brand { height: auto; }
   .side-nav {
-    grid-template-columns: repeat(5, minmax(120px, 1fr));
+    grid-template-columns: repeat(4, minmax(120px, 1fr));
     overflow-x: auto;
   }
   .stats-grid,
@@ -792,6 +879,11 @@ legend { padding: 0 4px; }
   border-color: #0a3d6b;
 }
 
+.dd-profile-action {
+  background: #269b72;
+  border-color: #269b72;
+}
+
 .dd-alert {
   border: 1px solid #dbe3ec;
   border-radius: 8px;
@@ -813,6 +905,18 @@ legend { padding: 0 4px; }
 .dd-alert.warning { background: #fffaeb; border-color: #fedf89; color: #b54708; }
 .dd-alert.danger { background: #fef3f2; border-color: #fecdca; color: #b42318; }
 .dd-alert.purple { background: #faf5ff; border-color: #e9d5ff; color: #6b21a8; }
+
+.dd-clinical-alerts {
+  display: grid;
+  gap: 6px;
+}
+
+.dd-intake-summary {
+  border-width: 2px;
+}
+
+.dd-intake-summary.warning { border-color: #fdb022; }
+.dd-intake-summary.danger { border-color: #f97066; background: #fff7f7; }
 
 .dd-segment {
   display: flex;
@@ -1031,6 +1135,11 @@ legend { padding: 0 4px; }
   gap: 12px;
   padding: 14px 16px;
   border-bottom: 1px solid #f1f5f9;
+}
+
+.dd-row.dd-row-danger {
+  background: #fef2f2;
+  border-left: 4px solid #d92d20;
 }
 
 .dd-row:last-child { border-bottom: 0; }

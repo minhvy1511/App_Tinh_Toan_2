@@ -19,15 +19,7 @@
       </div>
 
       <nav class="side-nav" aria-label="Điều hướng chính">
-        <button class="nav-item active" data-screen="overview">
-          <svg viewBox="0 0 24 24"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg>
-          <span>Tổng quan</span>
-        </button>
-        <button class="nav-item" data-screen="patients">
-          <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          <span>Bệnh nhân</span>
-        </button>
-        <button class="nav-item" data-screen="dongdo">
+        <button class="nav-item active" data-screen="dongdo">
           <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
           <span>Tính toán nhanh</span>
         </button>
@@ -39,6 +31,10 @@
           <svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M8 19v-7"/><path d="M12 19V9"/><path d="M16 19v-4"/><path d="M20 19V7"/></svg>
           <span>Kiểm toán</span>
         </button>
+        <button class="nav-item" data-screen="overview">
+          <svg viewBox="0 0 24 24"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg>
+          <span>Tổng quan</span>
+        </button>
       </nav>
     </aside>
 
@@ -48,7 +44,7 @@
         <div class="system-status"><span></span>Hệ thống hoạt động</div>
       </header>
 
-      <section id="overview" class="screen active">
+      <section id="overview" class="screen">
         <div class="page-head">
           <div>
             <h1>Tổng quan hệ thống</h1>
@@ -63,7 +59,7 @@
               <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>
             </div>
             <strong id="statPatients">0</strong>
-            <span>Tổng bệnh nhân</span>
+            <span>Tổng hồ sơ</span>
           </article>
           <article class="stat-card">
             <div class="stat-icon indigo">
@@ -96,9 +92,9 @@
           <section class="panel">
             <h2>Truy cập nhanh</h2>
             <div class="quick-links">
-              <button data-goto="patients">
-                <span class="mini-icon"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></span>
-                <span><strong>Danh sách bệnh nhân</strong><small>Quản lý hồ sơ</small></span>
+              <button data-goto="audit">
+                <span class="mini-icon"><svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M8 19v-7"/><path d="M12 19V9"/><path d="M16 19v-4"/><path d="M20 19V7"/></svg></span>
+                <span><strong>Danh sách lưu trữ</strong><small>Xem lại toàn bộ ca đã lưu</small></span>
                 <b>→</b>
               </button>
               <button data-goto="planning">
@@ -118,26 +114,13 @@
         <section class="panel recent-panel">
           <div class="panel-head">
             <h2>Kế hoạch phẫu thuật gần đây</h2>
-            <button class="ghost-link" data-goto="patients">Xem tất cả</button>
+            <button class="ghost-link" data-goto="audit">Xem tất cả</button>
           </div>
           <div id="recentPlans" class="recent-list"></div>
         </section>
       </section>
 
-      <section id="patients" class="screen">
-        <div class="page-head">
-          <div>
-            <h1>Danh sách bệnh nhân</h1>
-            <p>Hồ sơ được tạo từ các kế hoạch đã lưu.</p>
-          </div>
-          <button class="primary-action" data-goto="planning">+ Thêm kế hoạch</button>
-        </div>
-        <section class="panel">
-          <div id="patientsList" class="table-list"></div>
-        </section>
-      </section>
-
-      <section id="dongdo" class="screen">
+      <section id="dongdo" class="screen active">
         <div id="dongdoApp" class="dongdo-app"></div>
       </section>
 
@@ -192,8 +175,8 @@
       <section id="audit" class="screen">
         <div class="page-head">
           <div>
-            <h1>Kiểm toán</h1>
-            <p>Theo dõi rủi ro PTA/RSB và chất lượng kế hoạch.</p>
+            <h1>Kiểm toán & lưu trữ</h1>
+            <p>Danh sách tổng toàn bộ ca đã lưu, kèm PTA/RSB và trạng thái an toàn.</p>
           </div>
         </div>
         <section class="panel">
@@ -203,6 +186,6 @@
     </main>
 
     <script src="{{ url_for('static', filename='app.js') }}"></script>
-    <script src="{{ url_for('static', filename='dongdo.js') }}?v=20260515-visionid-1"></script>
+    <script src="{{ url_for('static', filename='dongdo.js') }}?v=20260515-directflow1"></script>
   </body>
 </html>

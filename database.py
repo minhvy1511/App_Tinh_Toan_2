@@ -66,12 +66,27 @@ def save_plan(payload, result, notes=""):
         return record.to_dict()
 
 
-def list_plans(limit=30):
+def update_plan(plan_id, payload, result, notes=""):
+    patient = payload.get("patient", {})
     with SessionLocal() as session:
-        records = (
-            session.query(SurgicalPlan)
-            .order_by(SurgicalPlan.created_at.desc())
-            .limit(limit)
-            .all()
-        )
+        record = session.get(SurgicalPlan, plan_id)
+        if not record:
+            return None
+        record.patient_name = patient.get("name") or "ChÆ°a nháº­p"
+        record.patient_id = patient.get("id") or ""
+        record.surgeon = patient.get("surgeon") or ""
+        record.payload = json.dumps(payload, ensure_ascii=False)
+        record.result = json.dumps(result, ensure_ascii=False)
+        record.notes = notes or ""
+        session.commit()
+        session.refresh(record)
+        return record.to_dict()
+
+
+def list_plans(limit=None):
+    with SessionLocal() as session:
+        query = session.query(SurgicalPlan).order_by(SurgicalPlan.created_at.desc())
+        if limit:
+            query = query.limit(limit)
+        records = query.all()
         return [record.to_dict() for record in records]
