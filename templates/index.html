@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="vi">
+<html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>VISION ID</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=20260515-phakic-size1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=20260516-screening-banners1">
   </head>
   <body>
     <aside class="sidebar">
@@ -14,26 +14,26 @@
         </div>
         <div>
           <strong>VISION ID</strong>
-          <span>Kiến tạo - Bứt phá - Thông lĩnh</span>
+          <span>Create - Advance - Lead</span>
         </div>
       </div>
 
-      <nav class="side-nav" aria-label="Điều hướng chính">
+      <nav class="side-nav" aria-label="Main navigation">
         <button class="nav-item active" data-screen="dongdo">
           <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
-          <span>Tính toán nhanh</span>
+          <span>Quick Calculation</span>
         </button>
         <button class="nav-item" data-screen="planning">
           <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M9 15h6"/><path d="M9 11h2"/></svg>
-          <span>Hoạch định PT</span>
+          <span>Surgical Planning</span>
         </button>
         <button class="nav-item" data-screen="phakic">
           <svg viewBox="0 0 24 24"><path d="M3 12s3.5-5 9-5 9 5 9 5-3.5 5-9 5-9-5-9-5Z"/><circle cx="12" cy="12" r="2.5"/><path d="M8 4.5 6.5 7"/><path d="M16 4.5 17.5 7"/></svg>
-          <span>Tính toán Phakic</span>
+          <span>Phakic IOL Calculation</span>
         </button>
         <button class="nav-item" data-screen="overview">
           <svg viewBox="0 0 24 24"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg>
-          <span>Tổng quan</span>
+          <span>Overview</span>
         </button>
       </nav>
     </aside>
@@ -41,7 +41,7 @@
     <main class="main">
       <header class="system-bar">
         <div></div>
-        <div class="system-status"><span></span>Hệ thống hoạt động</div>
+        <div class="system-status"><span></span>System active</div>
       </header>
 
       <section id="overview" class="screen">
@@ -131,22 +131,22 @@
       <section id="phakic" class="screen">
         <div class="page-head">
           <div>
-            <h1>Tính toán Phakic</h1>
-            <p>Nhập khúc xạ, kích thước nội nhãn, cảnh báo ACD/CD và lưu kế hoạch Phakic IOL.</p>
+            <h1>Phakic IOL Calculation</h1>
+            <p>Enter maximum refraction and intraocular biometrics to estimate ICL size, vault, and lens power.</p>
           </div>
         </div>
 
         <form id="phakicForm" class="panel form-panel">
           <input type="hidden" name="plan_type" value="phakic">
           <div class="form-section">
-            <h2>Thông tin bệnh nhân</h2>
+            <h2>Patient Information</h2>
             <div class="patient-grid">
-              <label>Bệnh nhân<input name="patient.name" value="BÙI ĐĂNG TOÀN"></label>
-              <label>Năm sinh<input name="patient.yob" type="number" value="1981"></label>
-              <label>Mã ID<input name="patient.id" value="BN-2026-001"></label>
-              <label>Phẫu thuật viên<input name="patient.surgeon" value="BS THỦY"></label>
+              <label>Patient Name<input name="patient.name" value="BÙI ĐĂNG TOÀN"></label>
+              <label>Year of Birth<input name="patient.yob" type="number" value="1981"></label>
+              <label>Patient ID<input name="patient.id" value="BN-2026-001"></label>
+              <label>Surgeon<input name="patient.surgeon"></label>
               <fieldset>
-                <legend>Mắt chủ đạo</legend>
+                <legend>Dominant Eye</legend>
                 <label class="radio"><input type="radio" name="patient.dominant_eye" value="OD" checked> OD</label>
                 <label class="radio"><input type="radio" name="patient.dominant_eye" value="OS"> OS</label>
               </fieldset>
@@ -155,36 +155,43 @@
 
           <div class="form-section clinical-refraction-section">
             <div class="section-title-row">
-              <h2>Khúc xạ lâm sàng</h2>
-              <span>Đồng bộ với Hoạch định PT</span>
+              <h2>Clinical Refraction</h2>
+              <span>Synced with Surgical Planning</span>
             </div>
-            <div id="phakicRefractionTable" class="clinical-refraction-wrap"></div>
+            <div id="phakicRefractionTable" class="clinical-refraction-wrap" hidden></div>
           </div>
 
           <div class="eye-layout phakic-eye-layout">
             <section class="eye-panel phakic-eye-panel" data-phakic-eye="od">
-              <h2>Mắt phải (OD)</h2>
+              <h2>Right Eye (OD)</h2>
               <div class="phakic-fields"></div>
             </section>
             <section class="eye-panel phakic-eye-panel" data-phakic-eye="os">
-              <h2>Mắt trái (OS)</h2>
+              <h2>Left Eye (OS)</h2>
               <div class="phakic-fields"></div>
             </section>
           </div>
 
-          <label class="notes">Ghi chú Phakic IOL
-            <textarea name="notes" rows="4" placeholder="Ghi chú sizing, vault dự kiến, cảnh báo an toàn..."></textarea>
+          <label class="notes">Phakic IOL Notes
+            <textarea name="notes" rows="4" placeholder="Sizing notes, predicted vault, safety warnings..."></textarea>
           </label>
 
           <div class="actions">
-            <button type="submit" class="primary-action">Lưu kế hoạch Phakic</button>
+            <button type="submit" class="primary-action">Save Phakic Plan</button>
           </div>
         </form>
+
+        <div id="phakicResult" class="result-area phakic-result-area"></div>
+
+        <div class="mt-4 ata-guide">
+          <h2>ATA Measurement Guide</h2>
+          <img src="{{ url_for('static', filename='img/ATA.jpg') }}" width="100%" alt="ATA measurement guide on Sirius">
+        </div>
       </section>
 
     </main>
 
-    <script src="{{ url_for('static', filename='app.js') }}?v=20260515-phakic-size1"></script>
-    <script src="{{ url_for('static', filename='dongdo.js') }}?v=20260515-sharedcalc1"></script>
+    <script src="{{ url_for('static', filename='app.js') }}?v=20260516-topo-alert1"></script>
+    <script src="{{ url_for('static', filename='dongdo.js') }}?v=20260516-postopk-danger1"></script>
   </body>
 </html>

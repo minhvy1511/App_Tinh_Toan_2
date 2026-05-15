@@ -7,6 +7,9 @@ const DONGDO_NAVY = "#0a3d6b";
 const DONGDO_TEAL = "#2ab3b8";
 const LS_PLANS = "visionid_plans";
 const LS_SHEETS_URL = "visionid_sheets_url";
+const SMILE_MIN_THICKNESS_DEFAULT = 15;
+const SMILE_MIN_THICKNESS_MIN = 10;
+const SMILE_MIN_THICKNESS_MAX = 35;
 
 const loadLS = (key, def) => { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; } catch { return def; } };
 const saveLS = (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} };
@@ -28,7 +31,7 @@ const defaultEye = () => ({
   mf_sph: "", mf_cyl: "", mf_axis: "", mf_bcva: "",
   cy_sph: "", cy_cyl: "", cy_axis: "", cy_bcva: "",
   sph: "", cyl: "", axis: "", target_sph: "0", target_cyl: "0",
-  procedure: "SmartSight", flap_cap: "", oz: "6.5", incision: "2.0", tz: "",
+  procedure: "SmartSight", flap_cap: "", oz: "6.5", incision: "2.0", tz: "", min_thickness: String(SMILE_MIN_THICKNESS_DEFAULT),
 });
 
 function defaultFlapCap(procedure) {
@@ -87,10 +90,22 @@ function nightVisionRisk(mesopic, oz) {
   return mesopic > oz;
 }
 
+function clampSmileMinimumThickness(value) {
+  const parsed = parseFloat(value);
+  if (!Number.isFinite(parsed)) return SMILE_MIN_THICKNESS_DEFAULT;
+  return Math.min(SMILE_MIN_THICKNESS_MAX, Math.max(SMILE_MIN_THICKNESS_MIN, parsed));
+}
+
+function calcSmileLenticuleFromMinimum(baseLenticule, minimumThickness) {
+  const minThickness = clampSmileMinimumThickness(minimumThickness);
+  return Math.round(baseLenticule + (minThickness - SMILE_MIN_THICKNESS_DEFAULT));
+}
+
 function hoaLevel(hoa) {
   if (isNaN(hoa) || hoa === null) return null;
-  if (hoa <= 0.45) return "normal";
-  if (hoa <= 0.65) return "warning";
+  if (hoa < 0.39) return "normal";
+  if (hoa >= 0.4 && hoa <= 0.55) return "warning";
+  if (hoa < 0.4) return null;
   return "danger";
 }
 
@@ -135,14 +150,22 @@ function calcEye(eye) {
   // Ablation: Total Diopters = |Final Laser Sphere| + |Cylinder|
   const totalD = Math.abs(finalLaserSph) + Math.abs(cyl);
   const ablation = calcAblationDepth(eye.procedure, finalLaserSph, cyl, oz);
+  const minimumThickness = clampSmileMinimumThickness(eye.min_thickness);
+  const lenticuleZeissForum = eye.procedure === "SMILE Pro"
+    ? calcSmileLenticuleFromMinimum(ablation, minimumThickness)
+    : ablation;
+  const ptaTissueDepth = eye.procedure === "SMILE Pro" ? lenticuleZeissForum : ablation;
 
   const rsb = !isNaN(thinnest) && !isNaN(cct) ? calcRSB(eye.procedure, cct, flapCap, ablation) : null;
-  const pta = !isNaN(cct) ? calcPTA(eye.procedure, flapCap, ablation, cct) : null;
+  const pta = !isNaN(cct) ? calcPTA(eye.procedure, flapCap, ptaTissueDepth, cct) : null;
   const nightRisk = !isNaN(mesopic) ? nightVisionRisk(mesopic, oz) : false;
 
   const k1v = parseFloat(eye.k1), k2v = parseFloat(eye.k2);
   const postK1 = !isNaN(k1v) ? parseFloat((k1v - 0.8 * totalD).toFixed(2)) : null;
   const postK2 = !isNaN(k2v) ? parseFloat((k2v - 0.8 * totalD).toFixed(2)) : null;
+  const postKMean = !isNaN(k1v) && !isNaN(k2v)
+    ? parseFloat((((k1v + k2v) / 2) - (0.8 * totalD)).toFixed(2))
+    : null;
 
   // Predicted VA Logic
   const mfBcva = (eye.mf_bcva || "").trim();
@@ -153,8 +176,8 @@ function calcEye(eye) {
     vaAlerts.push({ level: "orange", msg: "Thị lực sau mổ có thể không đạt tối đa" });
   }
 
-  const topoAlert = !isNaN(thinnest) && !isNaN(cct) && (cct - thinnest) > 15;
-  return { sph, cyl, finalLaserSph, ablation, flapCap, rsb, pta, nightRisk, totalD, postK1, postK2, vaAlerts, topoAlert, predictedVA };
+  const topoAlert = !isNaN(thinnest) && !isNaN(cct) && (cct - thinnest) >= 15;
+  return { sph, cyl, finalLaserSph, ablation, lenticuleZeissForum, minimumThickness, flapCap, rsb, pta, nightRisk, totalD, postK1, postK2, postKMean, vaAlerts, topoAlert, predictedVA };
 }
 
 window.VisionIDSharedState = window.VisionIDSharedState || {
@@ -253,9 +276,75 @@ function renderClinicalAlerts(eye, calc) {
   return `<div class="dd-clinical-alerts">${alerts.map((alert) => `<div class="dd-alert ${alert.level}">${alert.text}</div>`).join("")}</div>`;
 }
 
+function renderCalculationScreeningAlerts(eye) {
+  const alerts = [];
+  const thinnest = numOrNull(eye.thinnest_point);
+  const cct = numOrNull(eye.cct);
+  const hoa = numOrNull(eye.hoa_rms);
+  const tbut = numOrNull(eye.tbut);
+
+  // Cảnh báo realtime: chênh lệch pachymetry trung tâm và điểm mỏng nhất.
+  if (thinnest !== null && cct !== null && (cct - thinnest) >= 15) {
+    alerts.push({
+      level: "danger",
+      text: "⚠️ Corneal Thickness Risk: CCT - Thinnest Point ≥ 15 um (Check for Ectasia/Keratoconus risk).",
+    });
+  }
+
+  // Cảnh báo realtime: HOA RMS theo ngưỡng sàng lọc bề mặt giác mạc.
+  if (hoa !== null && hoa >= 0.4 && hoa <= 0.55) {
+    alerts.push({
+      level: "warning",
+      text: "⚠️ HOA Warning: High-Order Aberrations (0.40 - 0.55 um) - Monitor corneal surface.",
+    });
+  } else if (hoa !== null && hoa > 0.55) {
+    alerts.push({
+      level: "danger",
+      text: "🚨 HOA Danger: HOA RMS > 0.55 um - Requires Corneal Topography Re-evaluation.",
+    });
+  }
+
+  // Cảnh báo realtime: TBUT thấp trước phẫu thuật khúc xạ.
+  if (tbut !== null && tbut >= 5 && tbut <= 7) {
+    alerts.push({
+      level: "warning",
+      text: "⚠️ Dry Eye Risk: Mild to Moderate Dry Eye (TBUT 5-7 sec) - Consider Pre-op Lubricants.",
+    });
+  } else if (tbut !== null && tbut < 5) {
+    alerts.push({
+      level: "danger",
+      text: "🚨 Severe Dry Eye: Severe Dry Eye (TBUT < 5 sec) - Treat ocular surface before refractive surgery.",
+    });
+  }
+
+  return alerts.map((alert) => `<div class="dd-alert ${alert.level} dd-screening-alert">${alert.text}</div>`).join("");
+}
+
+function renderPostKCalculationAlert(calc) {
+  const postK = calc?.postKMean;
+  if (postK === null || postK === undefined || isNaN(postK) || postK >= 34) return "";
+  return `<div class="dd-alert danger dd-screening-alert">🚨 Cảnh báo Post-op K: ${postK} D - Ảnh hưởng chất lượng thị giác</div>`;
+}
+
 function ddSelect(label, key, eye, options) {
   const value = dongdoState[eye][key];
   return `<label>${label}<select data-dd-eye="${eye}" data-dd-key="${key}">${options.map((item) => `<option value="${item}" ${item === value ? "selected" : ""}>${item}</option>`).join("")}</select></label>`;
+}
+
+function renderSmileProDynamicFields(eye, data, calc) {
+  const visible = data.procedure === "SMILE Pro";
+  const minThickness = clampSmileMinimumThickness(data.min_thickness);
+  const lenticule = calc?.lenticuleZeissForum ?? "";
+  return `
+    <div class="dd-smile-row" data-dd-smile-fields="${eye}" style="${visible ? "" : "display:none"}">
+      <label>Minimum Thickness (um)
+        <input data-dd-eye="${eye}" data-dd-key="min_thickness" type="number" min="${SMILE_MIN_THICKNESS_MIN}" max="${SMILE_MIN_THICKNESS_MAX}" step="1" value="${escapeHtml(minThickness)}">
+      </label>
+      <label>Lenticule (Zeiss Forum)
+        <output data-dd-lenticule="${eye}">${lenticule !== "" ? `${lenticule} um` : "—"}</output>
+      </label>
+    </div>
+  `;
 }
 
 function renderDongDo() {
@@ -288,6 +377,7 @@ function renderDongDo() {
     ${dongdoState.activeTab === "history" ? renderDongDoHistory() : ""}
   `;
   installDongDoTabOrder();
+  updateDongDoSmileFields();
 }
 
 function renderDongDoPlanning() {
@@ -339,7 +429,7 @@ function renderDongDoEye(eye, title, code, syncNote) {
           ${tbutA ? `<div class="dd-alert ${tbutA.level}">${tbutA.text}</div>` : ""}
           ${renderClinicalAlerts(data, calc)}
           ${renderPostK(calc)}
-          ${calc?.topoAlert ? `<div class="dd-alert danger">Monitor Corneal Topography - CCT - Thinnest > 15 um</div>` : ""}
+          ${calc?.topoAlert ? `<div class="dd-alert danger">Monitor Corneal Topography - CCT - Thinnest >= 15 um</div>` : ""}
           <div class="dd-corvit">
             <p>Corvit ST</p>
             <div class="dd-segment">
@@ -371,6 +461,7 @@ function renderDongDoEye(eye, title, code, syncNote) {
           ${ddSelect("Optical Zone (OZ)", "oz", eye, ["6.2", "6.5", "6.8"])}
           ${ddField("Incision (mm)", "incision", eye, 'type="number" step="0.1" placeholder="2.0"')}
         </div>`)}
+        ${renderSmileProDynamicFields(eye, data, calc)}
         <div class="dd-calc-slot" data-dd-results="${eye}">
           ${calc ? renderDongDoResults(calc, data) : `<div class="dd-empty-calc">Fill in Group 4 to view results</div>`}
         </div>
@@ -399,6 +490,9 @@ function renderVaAlerts(eye) {
 
 function renderDongDoResults(calc, data) {
   const tier = ptaLevel(calc.pta, data.procedure);
+  const isSmile = data.procedure === "SMILE Pro";
+  const tissueLabel = isSmile || data.procedure === "CLEAR" ? "Lenticule (Zeiss Forum)" : "Ablation";
+  const tissueValue = isSmile ? calc.lenticuleZeissForum : calc.ablation;
   return `
     <div class="dd-results">
       <div class="dd-results-title">Calculation Results</div>
@@ -407,10 +501,12 @@ function renderDongDoResults(calc, data) {
         <div><span>Input Cylinder</span><strong>${calc.cyl >= 0 ? "+" : ""}${calc.cyl.toFixed(2)} D</strong></div>
         <div><span>Total Diopters</span><strong>${calc.totalD.toFixed(2)} D</strong></div>
       </div>
-      <div class="dd-main-metric"><span>${data.procedure === "SMILE Pro" || data.procedure === "CLEAR" ? "Lenticule (Zeiss Forum)" : "Ablation"}</span><strong>${calc.ablation} um</strong></div>
+      <div class="dd-main-metric"><span>${tissueLabel}</span><strong>${tissueValue} um</strong></div>
       ${calc.rsb !== null ? `<div class="dd-main-metric ${calc.rsb >= 300 ? "safe" : "danger"}"><span>RSB ${calc.rsb < 300 ? "ECTASIA RISK" : ""}</span><strong>${calc.rsb} um</strong></div>` : ""}
       ${calc.pta !== null ? `<div class="dd-main-metric ${tier}"><span>PTA - ${ptaLabel(calc.pta, data.procedure)}</span><strong>${calc.pta}%</strong></div>` : ""}
       ${renderClinicalAlerts(data, calc)}
+      ${renderCalculationScreeningAlerts(data)}
+      ${renderPostKCalculationAlert(calc)}
       ${tier === "danger" ? `<div class="dd-alert danger">Consider Phakic ICL as an alternative procedure</div>` : ""}
       ${calc.nightRisk ? `<div class="dd-alert warning">Night Vision Risk: Mesopic Pupil > OZ</div>` : ""}
       ${calc.vaAlerts.map((a) => `<div class="dd-alert warning">${a.msg}</div>`).join("")}
@@ -481,6 +577,51 @@ function updateDongDoResultSlots() {
   }
 }
 
+function updateDongDoSmileFields() {
+  ["od", "os"].forEach((eye) => {
+    const row = document.querySelector(`[data-dd-smile-fields="${eye}"]`);
+    const input = document.querySelector(`[data-dd-eye="${eye}"][data-dd-key="min_thickness"]`);
+    const output = document.querySelector(`[data-dd-lenticule="${eye}"]`);
+    if (!row) return;
+
+    const isSmile = dongdoState[eye].procedure === "SMILE Pro";
+    row.style.display = isSmile ? "" : "none";
+    if (!isSmile) return;
+
+    const clamped = clampSmileMinimumThickness(dongdoState[eye].min_thickness);
+    dongdoState[eye].min_thickness = String(clamped);
+    if (input && input.value !== String(clamped)) input.value = String(clamped);
+
+    const calc = calcEye(dongdoState[eye]);
+    if (output) output.textContent = calc ? `${calc.lenticuleZeissForum} um` : "—";
+  });
+  updateDongDoCornealWarningFields();
+  installDongDoTabOrder();
+}
+
+function updateDongDoCornealWarningFields() {
+  ["od", "os"].forEach((eye) => {
+    const data = dongdoState[eye] || {};
+    const thinnest = parseFloat(data.thinnest_point);
+    const cct = parseFloat(data.cct);
+    const topoWarning = Number.isFinite(thinnest) && Number.isFinite(cct) && (cct - thinnest) >= 15;
+    ["thinnest_point", "cct"].forEach((key) => {
+      const input = document.querySelector(`[data-dd-eye="${eye}"][data-dd-key="${key}"]`);
+      if (!input) return;
+      input.classList.toggle("dd-input-warning", topoWarning);
+    });
+
+    const hoaInput = document.querySelector(`[data-dd-eye="${eye}"][data-dd-key="hoa_rms"]`);
+    if (!hoaInput) return;
+    hoaInput.classList.remove("dd-input-success", "dd-input-warning", "dd-input-danger");
+    const hoa = parseFloat(data.hoa_rms);
+    const level = hoaLevel(hoa);
+    if (level === "normal") hoaInput.classList.add("dd-input-success");
+    if (level === "warning") hoaInput.classList.add("dd-input-warning");
+    if (level === "danger") hoaInput.classList.add("dd-input-danger");
+  });
+}
+
 function handleDongDoSave() {
   if (!dongdoState.patient.name.trim()) {
     dongdoState.saveMsg = "⚠ Please fill in patient name first.";
@@ -539,7 +680,7 @@ function handleDongDoPrint() {
     if (tbut && tbut.level !== "success") alerts.push({ cls: tbut.level, text: tbut.text });
     const highCyl = highCylAlert(eye.cyl);
     if (highCyl) alerts.push({ cls: "purple", text: highCyl });
-    if (calc?.topoAlert) alerts.push({ cls: "danger", text: "Monitor Corneal Topography: CCT - Thinnest > 15 um" });
+    if (calc?.topoAlert) alerts.push({ cls: "danger", text: "Monitor Corneal Topography: CCT - Thinnest >= 15 um" });
     if (calc?.nightRisk) alerts.push({ cls: "warning", text: "Night Vision Risk: Mesopic Pupil > OZ" });
     if (calc?.rsb !== null && calc?.rsb < 300) alerts.push({ cls: "danger", text: `RSB nguy hiểm: ${calc.rsb} um - Ectasia risk` });
     if (calc?.pta !== null) {
@@ -563,7 +704,7 @@ function handleDongDoPrint() {
       <h2>${label}</h2>
       <div class="result-grid">
         ${resultBadge("Input Sphere", calc ? `${signed(calc.finalLaserSph)} D` : "—", "primary")}
-        ${resultBadge("Ablation", calcValue(calc?.ablation, " um"), "primary")}
+        ${resultBadge("Ablation", calcValue(eye.procedure === "SMILE Pro" ? calc?.lenticuleZeissForum : calc?.ablation, " um"), "primary")}
         ${resultBadge("RSB", calcValue(calc?.rsb, " um"), calc?.rsb !== null && calc?.rsb < 300 ? "danger" : "success")}
         ${resultBadge("PTA", calcValue(calc?.pta, "%"), tier === "danger" ? "danger" : tier === "caution" ? "warning" : "success")}
       </div>
@@ -586,7 +727,7 @@ function handleDongDoPrint() {
         ${section("Calculation Results")}
         ${row("Input Sphere / Cylinder", `${calc ? signed(calc.finalLaserSph) : "—"} / ${calc ? signed(calc.cyl) : "—"} D`)}
         ${row("Total Diopters", calcValue(calc?.totalD?.toFixed ? calc.totalD.toFixed(2) : calc?.totalD, " D"))}
-        ${row("Ablation / Lenticule", calcValue(calc?.ablation, " um"), "primary")}
+        ${row("Ablation / Lenticule", calcValue(eye.procedure === "SMILE Pro" ? calc?.lenticuleZeissForum : calc?.ablation, " um"), "primary")}
         ${row("RSB", calcValue(calc?.rsb, " um"), calc?.rsb !== null && calc?.rsb < 300 ? "danger" : "success")}
         ${row("PTA", calcValue(calc?.pta, "%"), tier === "danger" ? "danger" : tier === "caution" ? "warning" : "success")}
         ${row("Post-op K1 / K2", `<span class="${postKClass(calc?.postK1)}">${calcValue(calc?.postK1, " D")}</span> / <span class="${postKClass(calc?.postK2)}">${calcValue(calc?.postK2, " D")}</span>`)}
@@ -766,9 +907,13 @@ function attachDongDoEvents() {
       if (patientKey === "dominant") renderDongDo();
     }
     if (eye && key) {
-      dongdoState[eye][key] = event.target.value;
-      if (eye === "od" && ["procedure", "oz", "flap_cap", "incision"].includes(key)) dongdoState.os[key] = event.target.value;
-      scheduleDongDoRefresh();
+      const value = key === "min_thickness" ? String(clampSmileMinimumThickness(event.target.value)) : event.target.value;
+      dongdoState[eye][key] = value;
+      if (key === "min_thickness" && event.target.value !== value) event.target.value = value;
+      if (eye === "od" && ["procedure", "oz", "flap_cap", "incision", "min_thickness"].includes(key)) dongdoState.os[key] = value;
+      updateDongDoSmileFields();
+      if (key === "min_thickness") refreshDongDoResults();
+      else scheduleDongDoRefresh();
     }
   });
   document.addEventListener("change", (event) => {
@@ -781,13 +926,17 @@ function attachDongDoEvents() {
       if (patientKey === "dominant") renderDongDo();
     }
     if (eye && key) {
-      dongdoState[eye][key] = event.target.value;
-      if (eye === "od" && ["procedure", "oz", "flap_cap", "incision"].includes(key)) {
-        dongdoState.os[key] = event.target.value;
+      const value = key === "min_thickness" ? String(clampSmileMinimumThickness(event.target.value)) : event.target.value;
+      dongdoState[eye][key] = value;
+      if (key === "min_thickness" && event.target.value !== value) event.target.value = value;
+      if (eye === "od" && ["procedure", "oz", "flap_cap", "incision", "min_thickness"].includes(key)) {
+        dongdoState.os[key] = value;
         const synced = document.querySelector(`[data-dd-eye="os"][data-dd-key="${key}"]`);
-        if (synced) synced.value = event.target.value;
+        if (synced) synced.value = value;
       }
-      scheduleDongDoRefresh();
+      updateDongDoSmileFields();
+      if (key === "min_thickness") refreshDongDoResults();
+      else scheduleDongDoRefresh();
     }
   });
   document.addEventListener("click", (event) => {

@@ -27,29 +27,31 @@ const numericNames = new Set([
   "thin", "cct", "k1", "k2", "kmax", "pupil", "mf_sph", "mf_cyl", "mf_axis",
   "old_sph", "old_cyl", "old_axis", "cy_sph", "cy_cyl", "cy_axis",
   "ret_sph", "ret_cyl", "ret_axis", "ls_sph", "ls_cyl", "ls_axis",
-  "ls_targ", "flap", "inc", "yob", "wtw", "sts", "angle", "acd", "aqd",
-  "cd", "icl_sph", "icl_cyl", "icl_size", "icl_axis"
+  "ls_targ", "flap", "inc", "yob", "wtw", "ata", "angle", "acd", "aqd",
+  "cd", "max_sph", "max_cyl", "max_axis", "vertex"
 ]);
 
 const phakicFieldTemplate = (prefix) => `
-  <div class="phakic-row cols-3">
-    <label>WTW (mm)<input name="${prefix}.wtw" type="number" step="0.1" placeholder="11.8"></label>
-    <label>STS<input name="${prefix}.sts" type="number" step="0.1" placeholder="12.2"></label>
-    <label>Góc tiền phòng<input name="${prefix}.angle" type="number" step="1" placeholder="35"></label>
+  <div class="phakic-subsection-title">Maximum Spectacle Refraction</div>
+  <div class="phakic-row cols-5">
+    <label>Sph<input name="${prefix}.max_sph" type="number" step="0.25" placeholder="-8.00"></label>
+    <label>Cyl<input name="${prefix}.max_cyl" type="number" step="0.25" placeholder="-1.50"></label>
+    <label>Axis<input name="${prefix}.max_axis" type="number" step="1" placeholder="90"></label>
+    <label>BCVA<input name="${prefix}.max_va" type="text" placeholder="20/20"></label>
+    <label>Vertex<select name="${prefix}.vertex"><option value="12.0">12.0 mm</option><option value="12.5">12.5 mm</option></select></label>
   </div>
-  <div class="phakic-row cols-2">
+  <div class="phakic-subsection-title">Phakic ICL Biometrics</div>
+  <div class="phakic-row cols-4">
+    <label>WTW (mm)<input name="${prefix}.wtw" type="number" step="0.1" placeholder="11.8"></label>
+    <label>ATA (mm)<input name="${prefix}.ata" type="number" step="0.1" placeholder="11.8"></label>
     <label>ACD (mm)<input name="${prefix}.acd" data-phakic-check="acd" type="number" step="0.01" placeholder="3.00"></label>
     <label>AqD (mm)<input name="${prefix}.aqd" type="number" step="0.01" placeholder="2.80"></label>
   </div>
-  <div class="phakic-row cols-3">
-    <label>Tế bào nội mô (CD)<input name="${prefix}.cd" data-phakic-check="cd" type="number" step="1" placeholder="2600"></label>
-    <label>ICL Sph<input name="${prefix}.icl_sph" type="number" step="0.25" placeholder="-8.00"></label>
-    <label>ICL Cyl<input name="${prefix}.icl_cyl" type="number" step="0.25" placeholder="-1.50"></label>
-  </div>
-  <div class="phakic-row cols-3">
-    <label>Size kính ICL<select name="${prefix}.icl_size" data-icl-size><option value="">Chọn size</option><option>12.1</option><option>12.6</option><option>13.2</option><option>13.7</option></select><span class="icl-size-hint" data-icl-size-hint="${prefix}"></span></label>
-    <label>Loại kính<select name="${prefix}.icl_type"><option>Non-Toric</option><option>Toric</option></select></label>
-    <label>ICL Axis<input name="${prefix}.icl_axis" type="number" step="1" placeholder="90"></label>
+  <div class="phakic-row cols-4">
+    <label>K1 (D)<input name="${prefix}.k1" type="number" step="0.01" placeholder="43.00"></label>
+    <label>K2 (D)<input name="${prefix}.k2" type="number" step="0.01" placeholder="44.00"></label>
+    <label>ECD<input name="${prefix}.cd" data-phakic-check="cd" type="number" step="1" placeholder="2600"></label>
+    <label>ACA<input name="${prefix}.angle" type="number" step="1" placeholder="35"></label>
   </div>
   <div class="phakic-alerts" data-phakic-alerts="${prefix}"></div>
 `;
@@ -118,6 +120,7 @@ let plansCache = [];
 let editingPlanId = null;
 let editingPhakicPlanId = null;
 let previewTimer = null;
+let phakicPreviewTimer = null;
 
 function planningEyeToQuickEye(data = {}) {
   return {
@@ -266,7 +269,7 @@ function warningForUnifiedEye(eye, result) {
   else warnings.push({ level: "danger", message: `PTA nguy cơ cao (${result.pta}%): cân nhắc Phakic ICL.` });
   if (result.rsb < 300) warnings.push({ level: "danger", message: `RSB ${result.rsb} um < 300 um: Nguy cơ cao - Ectasia risk.` });
   if (result.nightRisk) warnings.push({ level: "warning", message: "Mesopic pupil lớn hơn OZ: nguy cơ lóa/halo ban đêm." });
-  if (result.topoAlert) warnings.push({ level: "danger", message: "CCT - Thinnest > 15 um: cần đánh giá kỹ nguy cơ giác mạc." });
+  if (result.topoAlert) warnings.push({ level: "danger", message: "CCT - Thinnest >= 15 um: cần đánh giá kỹ nguy cơ giác mạc." });
   return warnings;
 }
 
@@ -341,33 +344,12 @@ async function savePlan(event) {
 function phakicWarnings(eye = {}) {
   const warnings = [];
   if (Number(eye.acd) > 0 && Number(eye.acd) < 2.8) {
-    warnings.push({ field: "acd", level: "danger", message: "Chống chỉ định: ACD quá nông" });
+    warnings.push({ field: "acd", level: "danger", message: "Contraindication: ACD is too shallow" });
   }
   if (Number(eye.cd) > 0 && Number(eye.cd) < 2000) {
-    warnings.push({ field: "cd", level: "warning", message: "Cảnh báo: Mật độ tế bào nội mô thấp" });
-  }
-  if (Number(eye.acd) > 0 && Number(eye.acd) < 3 && ["13.2", "13.7"].includes(String(eye.icl_size))) {
-    warnings.push({ field: "icl_size", level: "warning", message: "Nguy cơ Vault cao, cân nhắc giảm Size" });
+    warnings.push({ field: "cd", level: "warning", message: "Warning: low endothelial cell density" });
   }
   return warnings;
-}
-
-function suggestIclSizeFromWtw(wtw) {
-  const value = Number(wtw);
-  if (!Number.isFinite(value) || value <= 0) return "";
-  if (value <= 11) return "12.1";
-  if (value <= 11.5) return "12.6";
-  if (value <= 12) return "13.2";
-  return "13.7";
-}
-
-function autoSuggestIclSizeForEye(form, eye) {
-  const wtw = form.querySelector(`[name="${eye}.wtw"]`)?.value;
-  const suggested = suggestIclSizeFromWtw(wtw);
-  const sizeSelect = form.querySelector(`[name="${eye}.icl_size"]`);
-  if (!suggested || !sizeSelect) return;
-  sizeSelect.value = suggested;
-  sizeSelect.dataset.autoSuggested = "1";
 }
 
 function calculatePhakicPlan(data) {
@@ -380,6 +362,169 @@ function calculatePhakicPlan(data) {
   };
 }
 
+function phakicApiPayload(data) {
+  const eyePayload = (eye = {}) => ({
+    max_sph: eye.max_sph,
+    max_cyl: eye.max_cyl,
+    max_axis: eye.max_axis,
+    max_va: eye.max_va,
+    vertex: eye.vertex,
+    wtw: eye.wtw,
+    ata: eye.ata,
+    angle: eye.angle,
+    acd: eye.acd,
+    aqd: eye.aqd,
+    k1: eye.k1,
+    k2: eye.k2,
+  });
+  const payload = {};
+  if (data.od?.wtw || data.od?.acd || data.od?.max_sph) payload.od = eyePayload(data.od);
+  if (data.os?.wtw || data.os?.acd || data.os?.max_sph) payload.os = eyePayload(data.os);
+  return payload;
+}
+
+function renderPhakicEyeResult(label, result) {
+  const warnings = result.vault_warnings || [];
+  const cylPower = Number(result.calculated_cyl_power || 0);
+  const targetAxis = Number(result.target_axis || result.max_refraction?.axis || 0);
+  const axisLabel = Number.isFinite(targetAxis) && targetAxis > 0 ? `${targetAxis.toFixed(0)}°` : "—";
+  const predictedVault = Number(result.predicted_vault_um);
+  const hasVault = Number.isFinite(predictedVault);
+  const vaultMarker = hasVault ? Math.max(0, Math.min(100, predictedVault / 10)) : 0;
+  const toricLabel = Math.abs(cylPower) > 0.001 ? `${cylPower >= 0 ? "+" : ""}${cylPower.toFixed(2)} D` : "Non-Toric";
+  const lensModel = Math.abs(cylPower) > 0.001 ? "EVO+ Toric" : "EVO+";
+  const vaultValue = hasVault ? `${result.predicted_vault_um} µm` : "No ATA";
+  const comparisonTable = `
+    <div class="phakic-sizing-compare" aria-label="Sizing comparison">
+      <div><span>OCOS Sizing (WTW)</span><strong>${result.base_size_by_wtw_acd ?? "—"} mm</strong></div>
+      <div><span>Ideal Sizing (ATA)</span><strong>${result.ata_size ?? "—"} mm</strong></div>
+    </div>
+  `;
+  const metrics = [
+    `<div class="metric"><span>Recommended Size</span><strong>${result.recommended_size} mm</strong></div>`,
+    `<div class="metric vault-metric ${result.vault_level === "danger" ? "danger" : result.vault_level === "warning" ? "warning" : result.vault_level === "success" ? "success" : ""}">
+      <span>Predicted Vault</span>
+      <strong>${vaultValue}</strong>
+      <div class="vault-gauge" aria-label="Vault gauge from 0 to 1000 microns">
+        <div class="vault-safe-band"></div>
+        <i style="left:${vaultMarker}%"></i>
+      </div>
+      <div class="vault-scale"><span>0</span><span>250</span><span>750</span><span>1000 µm</span></div>
+    </div>`,
+    `<div class="metric"><span>ICL Sph Power</span><strong>${result.calculated_power >= 0 ? "+" : ""}${result.calculated_power.toFixed(2)} D</strong></div>`,
+    `<div class="metric"><span>ICL Cyl Power</span><strong>${toricLabel}</strong></div>`,
+    `<div class="metric"><span>Target Axis</span><strong>${axisLabel}</strong></div>`,
+    `<div class="metric"><span>Lens Model</span><strong>${lensModel}</strong></div>`,
+  ];
+  return `
+    <section class="result-card phakic-result-card">
+      <h2>${label}</h2>
+      <div class="metrics">
+        ${metrics.join("")}
+      </div>
+      <div class="phakic-axis-simulation">
+        <div>
+          <span>Axis Simulation</span>
+          <strong>${axisLabel}</strong>
+        </div>
+        <canvas class="axis-canvas" width="180" height="180" data-axis="${Number.isFinite(targetAxis) ? targetAxis : 0}" aria-label="Axis simulation ${axisLabel}"></canvas>
+      </div>
+      ${warnings.length
+        ? `<div class="notice warning phakic-warning-box">
+            <div class="phakic-warning-text">${warnings.map((message) => `<p>${message}</p>`).join("")}</div>
+            ${comparisonTable}
+          </div>`
+        : `<div class="notice success">No notable vault warning from the current data.</div>`}
+    </section>
+  `;
+}
+
+function drawAxisCanvas(canvas) {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  const axis = Number(canvas.dataset.axis || 0);
+  const width = canvas.width;
+  const height = canvas.height;
+  const cx = width / 2;
+  const cy = height / 2;
+  const radius = Math.min(width, height) * 0.38;
+  const theta = -axis * Math.PI / 180;
+  const x1 = cx - radius * Math.cos(theta);
+  const y1 = cy - radius * Math.sin(theta);
+  const x2 = cx + radius * Math.cos(theta);
+  const y2 = cy + radius * Math.sin(theta);
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "#d7ebe7";
+  ctx.fillStyle = "#f5fbfa";
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius + 14, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.strokeStyle = "#8aa8a1";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(cx - radius - 18, cy);
+  ctx.lineTo(cx + radius + 18, cy);
+  ctx.moveTo(cx, cy - radius - 18);
+  ctx.lineTo(cx, cy + radius + 18);
+  ctx.stroke();
+
+  ctx.strokeStyle = "#1e9b79";
+  ctx.fillStyle = "#1e9b79";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+
+  const arrow = 11;
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - arrow * Math.cos(theta - Math.PI / 7), y2 + arrow * Math.sin(theta - Math.PI / 7));
+  ctx.lineTo(x2 - arrow * Math.cos(theta + Math.PI / 7), y2 + arrow * Math.sin(theta + Math.PI / 7));
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = "#28443f";
+  ctx.font = "700 12px Inter, Arial, sans-serif";
+  ctx.fillText("0", cx - 4, cy - radius - 23);
+  ctx.fillText("90", cx + radius + 16, cy + 4);
+  ctx.fillText("180", cx - 14, cy + radius + 34);
+}
+
+function drawPhakicAxisCanvases() {
+  document.querySelectorAll(".axis-canvas").forEach(drawAxisCanvas);
+}
+
+async function calculatePhakicPreview() {
+  const target = document.getElementById("phakicResult");
+  const form = document.getElementById("phakicForm");
+  if (!target || !form) return;
+  const data = formToNestedObject(form);
+  const payload = phakicApiPayload(data);
+  if (!payload.od && !payload.os) {
+    target.innerHTML = `<div class="notice warning">Enter Sph/Cyl, Vertex, WTW, ATA, ACD, and K1/K2 to view Phakic IOL results.</div>`;
+    return;
+  }
+  try {
+    const response = await postJson("/api/calculate-phakic", payload);
+    const od = response.results.od ? renderPhakicEyeResult("Right Eye (OD)", response.results.od) : "";
+    const os = response.results.os ? renderPhakicEyeResult("Left Eye (OS)", response.results.os) : "";
+    target.innerHTML = `${od}${os}`;
+    window.requestAnimationFrame(drawPhakicAxisCanvases);
+  } catch (error) {
+    target.innerHTML = `<div class="notice danger">Insufficient data for Phakic IOL calculation: ${error.message}</div>`;
+  }
+}
+
+function schedulePhakicPreview() {
+  window.clearTimeout(phakicPreviewTimer);
+  phakicPreviewTimer = window.setTimeout(calculatePhakicPreview, 220);
+}
+
 async function savePhakicPlan(event) {
   event.preventDefault();
   const data = formToObject(event.currentTarget);
@@ -387,6 +532,11 @@ async function savePhakicPlan(event) {
   data.od.proc = "Phakic IOL";
   data.os.proc = "Phakic IOL";
   data.phakic_result = calculatePhakicPlan(data);
+  try {
+    data.phakic_api_result = await postJson("/api/calculate-phakic", phakicApiPayload(data));
+  } catch {
+    data.phakic_api_result = null;
+  }
   const record = editingPhakicPlanId
     ? await postJson(`/api/plans/${editingPhakicPlanId}`, data, "PUT")
     : await postJson("/api/plans", data);
@@ -398,9 +548,9 @@ async function savePhakicPlan(event) {
 function riskLevel(plan) {
   if (plan.payload?.plan_type === "phakic") {
     const warnings = [...phakicWarnings(plan.payload.od), ...phakicWarnings(plan.payload.os)];
-    if (warnings.some((item) => item.level === "danger")) return ["high", "Chống chỉ định"];
-    if (warnings.length) return ["medium", "Cần lưu ý"];
-    return ["low", "Đủ điều kiện"];
+    if (warnings.some((item) => item.level === "danger")) return ["high", "Contraindication"];
+    if (warnings.length) return ["medium", "Attention needed"];
+    return ["low", "Eligible"];
   }
   const values = [plan.result.eyes.od, plan.result.eyes.os];
   const high = values.some((eye) => eye.pta > 40 || eye.rsb < 300);
@@ -563,7 +713,7 @@ function loadPlanIntoForm(plan) {
   setFormValue(form, "notes", plan.notes || "");
   syncPlanningSharedState();
   document.getElementById("planResult").innerHTML = `
-    <div class="notice warning">Đang xem lại kế hoạch #${plan.id}. Sau khi chỉnh sửa, bấm Lưu kế hoạch để cập nhật bản ghi này.</div>
+    <div class="notice warning">Reviewing plan #${plan.id}. After editing, press Save Plan to update this record.</div>
     ${renderEyeResult("Mắt phải (OD)", plan.result.eyes.od)}
     ${renderEyeResult("Mắt trái (OS)", plan.result.eyes.os)}
   `;
@@ -574,9 +724,6 @@ function loadPhakicPlanIntoForm(plan) {
   editingPhakicPlanId = plan.id;
   editingPlanId = null;
   const form = document.getElementById("phakicForm");
-  form.querySelectorAll("[data-icl-size]").forEach((select) => {
-    select.dataset.autoSuggested = "0";
-  });
   const payload = plan.payload || {};
   Object.entries(payload.patient || {}).forEach(([key, value]) => setFormValue(form, `patient.${key}`, value));
   ["od", "os"].forEach((eye) => {
@@ -597,14 +744,6 @@ function validatePhakicForm() {
     form.querySelectorAll(`[name^="${eye}."].input-danger, [name^="${eye}."].input-warning`).forEach((input) => {
       input.classList.remove("input-danger", "input-warning");
     });
-    const sizeSelect = form.querySelector(`[name="${eye}.icl_size"]`);
-    const sizeHint = form.querySelector(`[data-icl-size-hint="${eye}"]`);
-    const suggestedSize = suggestIclSizeFromWtw(data[eye]?.wtw);
-    if (sizeHint) {
-      sizeHint.textContent = sizeSelect?.dataset.autoSuggested === "1" && suggestedSize
-        ? "() Size gợi ý theo WTW. Bắt buộc đối chiếu kết quả với hệ thống OCOS của STAAR."
-        : "";
-    }
     const target = form.querySelector(`[data-phakic-alerts="${eye}"]`);
     if (target) target.innerHTML = alerts.map((item) => `<div class="phakic-alert ${item.level}">${item.message}</div>`).join("");
     alerts.forEach((item) => {
@@ -639,18 +778,15 @@ function attachCalculation() {
     }
   });
   phakicForm.addEventListener("submit", savePhakicPlan);
-  phakicForm.addEventListener("input", (event) => {
-    const match = event.target.name?.match(/^(od|os)\.wtw$/);
-    if (match) autoSuggestIclSizeForEye(phakicForm, match[1]);
+  phakicForm.addEventListener("input", () => {
     validatePhakicForm();
     syncSharedRefractionFromForm(phakicForm);
+    schedulePhakicPreview();
   });
-  phakicForm.addEventListener("change", (event) => {
-    const wtwMatch = event.target.name?.match(/^(od|os)\.wtw$/);
-    if (wtwMatch) autoSuggestIclSizeForEye(phakicForm, wtwMatch[1]);
-    if (event.target.matches("[data-icl-size]")) event.target.dataset.autoSuggested = "0";
+  phakicForm.addEventListener("change", () => {
     validatePhakicForm();
     syncSharedRefractionFromForm(phakicForm);
+    schedulePhakicPreview();
   });
   document.addEventListener("click", (event) => {
     const review = event.target.closest("[data-review-plan]");
@@ -686,7 +822,8 @@ async function init() {
     if (eye) panel.querySelector(".eye-fields").innerHTML = eyeFieldTemplate(eye);
   });
   document.getElementById("clinicalRefractionTable").innerHTML = clinicalRefractionTemplate();
-  document.getElementById("phakicRefractionTable").innerHTML = clinicalRefractionTemplate();
+  const phakicRefractionTable = document.getElementById("phakicRefractionTable");
+  if (phakicRefractionTable) phakicRefractionTable.innerHTML = "";
   document.querySelectorAll("[data-phakic-eye]").forEach((panel) => {
     const eye = panel.dataset.phakicEye;
     panel.querySelector(".phakic-fields").innerHTML = phakicFieldTemplate(eye);
@@ -695,6 +832,7 @@ async function init() {
   fillSelects();
   attachCalculation();
   validatePhakicForm();
+  calculatePhakicPreview();
   setTodayLabel();
   await calculatePlanPreview();
   await loadPlans();
