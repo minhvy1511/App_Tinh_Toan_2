@@ -47,7 +47,7 @@ const phakicFieldTemplate = (prefix) => `
     <label>ICL Cyl<input name="${prefix}.icl_cyl" type="number" step="0.25" placeholder="-1.50"></label>
   </div>
   <div class="phakic-row cols-3">
-    <label>Size kính ICL<select name="${prefix}.icl_size"><option value="">Chọn size</option><option>12.1</option><option>12.6</option><option>13.2</option><option>13.7</option></select></label>
+    <label>Size kính ICL<select name="${prefix}.icl_size" data-icl-size><option value="">Chọn size</option><option>12.1</option><option>12.6</option><option>13.2</option><option>13.7</option></select><span class="icl-size-hint" data-icl-size-hint="${prefix}"></span></label>
     <label>Loại kính<select name="${prefix}.icl_type"><option>Non-Toric</option><option>Toric</option></select></label>
     <label>ICL Axis<input name="${prefix}.icl_axis" type="number" step="1" placeholder="90"></label>
   </div>
@@ -346,7 +346,28 @@ function phakicWarnings(eye = {}) {
   if (Number(eye.cd) > 0 && Number(eye.cd) < 2000) {
     warnings.push({ field: "cd", level: "warning", message: "Cảnh báo: Mật độ tế bào nội mô thấp" });
   }
+  if (Number(eye.acd) > 0 && Number(eye.acd) < 3 && ["13.2", "13.7"].includes(String(eye.icl_size))) {
+    warnings.push({ field: "icl_size", level: "warning", message: "Nguy cơ Vault cao, cân nhắc giảm Size" });
+  }
   return warnings;
+}
+
+function suggestIclSizeFromWtw(wtw) {
+  const value = Number(wtw);
+  if (!Number.isFinite(value) || value <= 0) return "";
+  if (value <= 11) return "12.1";
+  if (value <= 11.5) return "12.6";
+  if (value <= 12) return "13.2";
+  return "13.7";
+}
+
+function autoSuggestIclSizeForEye(form, eye) {
+  const wtw = form.querySelector(`[name="${eye}.wtw"]`)?.value;
+  const suggested = suggestIclSizeFromWtw(wtw);
+  const sizeSelect = form.querySelector(`[name="${eye}.icl_size"]`);
+  if (!suggested || !sizeSelect) return;
+  sizeSelect.value = suggested;
+  sizeSelect.dataset.autoSuggested = "1";
 }
 
 function calculatePhakicPlan(data) {
@@ -479,7 +500,7 @@ function syncPlanningSharedState() {
     os: planningEyeToQuickEye(data.os),
   };
   window.dispatchEvent(new CustomEvent("visionid:planning-updated", {
-    detail: { ...window.VisionIDSharedState },
+    detail: { ...window.VisionIDSharedState, source: "laser" },
   }));
 }
 
@@ -498,7 +519,7 @@ function syncSharedRefractionFromForm(form) {
     os: { ...(window.VisionIDSharedState?.os || {}), ...planningEyeToQuickEye(data.os), ...data.os },
   };
   window.dispatchEvent(new CustomEvent("visionid:planning-updated", {
-    detail: { ...window.VisionIDSharedState },
+    detail: { ...window.VisionIDSharedState, source: form.id === "phakicForm" ? "phakic" : "laser" },
   }));
 }
 
@@ -519,6 +540,9 @@ function applyQuickDataToPlanning(detail = {}) {
   const form = document.getElementById("planForm");
   applySharedRefractionToForm(form, detail);
   syncPlanningSharedState();
+  const phakicForm = document.getElementById("phakicForm");
+  applySharedRefractionToForm(phakicForm, detail);
+  validatePhakicForm();
   gotoScreen("planning");
   calculatePlanPreview();
 }
@@ -529,6 +553,7 @@ function loadPlanIntoForm(plan) {
     return;
   }
   editingPlanId = plan.id;
+  editingPhakicPlanId = null;
   const form = document.getElementById("planForm");
   const payload = plan.payload || {};
   Object.entries(payload.patient || {}).forEach(([key, value]) => setFormValue(form, `patient.${key}`, value));
@@ -547,7 +572,11 @@ function loadPlanIntoForm(plan) {
 
 function loadPhakicPlanIntoForm(plan) {
   editingPhakicPlanId = plan.id;
+  editingPlanId = null;
   const form = document.getElementById("phakicForm");
+  form.querySelectorAll("[data-icl-size]").forEach((select) => {
+    select.dataset.autoSuggested = "0";
+  });
   const payload = plan.payload || {};
   Object.entries(payload.patient || {}).forEach(([key, value]) => setFormValue(form, `patient.${key}`, value));
   ["od", "os"].forEach((eye) => {
@@ -568,6 +597,14 @@ function validatePhakicForm() {
     form.querySelectorAll(`[name^="${eye}."].input-danger, [name^="${eye}."].input-warning`).forEach((input) => {
       input.classList.remove("input-danger", "input-warning");
     });
+    const sizeSelect = form.querySelector(`[name="${eye}.icl_size"]`);
+    const sizeHint = form.querySelector(`[data-icl-size-hint="${eye}"]`);
+    const suggestedSize = suggestIclSizeFromWtw(data[eye]?.wtw);
+    if (sizeHint) {
+      sizeHint.textContent = sizeSelect?.dataset.autoSuggested === "1" && suggestedSize
+        ? "() Size gợi ý theo WTW. Bắt buộc đối chiếu kết quả với hệ thống OCOS của STAAR."
+        : "";
+    }
     const target = form.querySelector(`[data-phakic-alerts="${eye}"]`);
     if (target) target.innerHTML = alerts.map((item) => `<div class="phakic-alert ${item.level}">${item.message}</div>`).join("");
     alerts.forEach((item) => {
@@ -591,12 +628,27 @@ function attachCalculation() {
   });
   document.getElementById("previewPlan").addEventListener("click", calculatePlanPreview);
   window.addEventListener("visionid:quick-to-planning", (event) => applyQuickDataToPlanning(event.detail));
+  window.addEventListener("visionid:planning-updated", (event) => {
+    if (event.detail?.source !== "laser") {
+      applySharedRefractionToForm(planForm, event.detail);
+      schedulePlanPreview();
+    }
+    if (event.detail?.source !== "phakic") {
+      applySharedRefractionToForm(phakicForm, event.detail);
+      validatePhakicForm();
+    }
+  });
   phakicForm.addEventListener("submit", savePhakicPlan);
-  phakicForm.addEventListener("input", () => {
+  phakicForm.addEventListener("input", (event) => {
+    const match = event.target.name?.match(/^(od|os)\.wtw$/);
+    if (match) autoSuggestIclSizeForEye(phakicForm, match[1]);
     validatePhakicForm();
     syncSharedRefractionFromForm(phakicForm);
   });
-  phakicForm.addEventListener("change", () => {
+  phakicForm.addEventListener("change", (event) => {
+    const wtwMatch = event.target.name?.match(/^(od|os)\.wtw$/);
+    if (wtwMatch) autoSuggestIclSizeForEye(phakicForm, wtwMatch[1]);
+    if (event.target.matches("[data-icl-size]")) event.target.dataset.autoSuggested = "0";
     validatePhakicForm();
     syncSharedRefractionFromForm(phakicForm);
   });
@@ -642,6 +694,7 @@ async function init() {
   appConfig = await fetch("/api/config").then((response) => response.json());
   fillSelects();
   attachCalculation();
+  validatePhakicForm();
   setTodayLabel();
   await calculatePlanPreview();
   await loadPlans();

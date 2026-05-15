@@ -129,3 +129,165 @@ def calculate_plan(payload):
         eyes[side] = calculate_eye(data)
 
     return {"patient_age": patient_age, "eyes": eyes}
+
+
+ICL_SIZES = (12.1, 12.6, 13.2, 13.7)
+
+
+def _nearest_icl_size(value):
+    """Round a continuous sizing estimate to the nearest available STAAR ICL size."""
+    return min(ICL_SIZES, key=lambda size: abs(size - value))
+
+
+def _round_to_half_diopter(value):
+    return round(value * 2) / 2
+
+
+def calculate_icl_size(wtw, acd, sts=None):
+    """Estimate EVO ICL overall diameter from WTW/ACD and optional STS.
+
+    This is a clinical-support simulation, not the official STAAR OCOS algorithm.
+
+    Args:
+        wtw: Horizontal white-to-white corneal diameter in mm.
+        acd: True anterior chamber depth in mm.
+        sts: Optional sulcus-to-sulcus diameter in mm. When present, it is used as
+            an anatomic cross-check because the ICL haptics rest in the ciliary sulcus.
+
+    Returns:
+        dict with recommended_size, base_size_by_wtw_acd, sts_size, and warnings.
+    """
+    wtw = _number(wtw, None)
+    acd = _number(acd, None)
+    sts_value = _number(sts, None) if sts not in (None, "") else None
+    warnings = []
+
+    if wtw is None or acd is None:
+        raise ValueError("WTW and ACD are required for ICL sizing.")
+    if wtw <= 0 or acd <= 0:
+        raise ValueError("WTW and ACD must be positive numbers.")
+
+    # Base OCOS-like estimate: four fixed STAAR overall diameters.
+    if wtw < 11.5:
+        base_size = 12.1
+    elif wtw < 12.0:
+        base_size = 12.6
+    elif wtw < 12.5:
+        base_size = 13.2
+    else:
+        base_size = 13.7
+
+    # Shallow chambers tend to be less tolerant of high vault; deep chambers may
+    # tolerate upsizing. Keep the adjustment conservative: one size step only.
+    if acd < 2.8:
+        warnings.append("ACD < 2.8 mm: ngoài ngưỡng an toàn thường dùng cho EVO ICL, cần đánh giá chỉ định.")
+    if acd < 3.0 and base_size > 12.1:
+        base_size = ICL_SIZES[ICL_SIZES.index(base_size) - 1]
+        warnings.append("ACD nông: đã hạ 1 size trong mô phỏng để giảm nguy cơ High Vault/góc hẹp.")
+    elif acd > 3.5 and base_size < 13.7:
+        base_size = ICL_SIZES[ICL_SIZES.index(base_size) + 1]
+        warnings.append("ACD sâu: đã tăng 1 size trong mô phỏng để hạn chế nguy cơ Low Vault.")
+
+    sts_size = None
+    if sts_value is not None:
+        if sts_value <= 0:
+            raise ValueError("STS must be a positive number when provided.")
+        # STS-based simulation inspired by KS/NK style reasoning: use the sulcus
+        # diameter plus a compression allowance, then round to an available size.
+        compression_allowance = 0.5 if acd < 3.2 else 1.0
+        sts_estimate = sts_value + compression_allowance
+        sts_size = _nearest_icl_size(sts_estimate)
+
+        size_gap = round(sts_size - base_size, 1)
+        if abs(size_gap) >= 0.6:
+            if size_gap > 0:
+                warnings.append(
+                    "STS gợi ý size lớn hơn WTW/ACD: nếu chọn theo WTW có nguy cơ Low Vault do rãnh thể mi rộng."
+                )
+            else:
+                warnings.append(
+                    "STS gợi ý size nhỏ hơn WTW/ACD: nếu chọn theo WTW có nguy cơ High Vault do rãnh thể mi hẹp."
+                )
+
+    recommended_size = sts_size if sts_size is not None else base_size
+    return {
+        "recommended_size": recommended_size,
+        "base_size_by_wtw_acd": base_size,
+        "sts_size": sts_size,
+        "warnings": warnings,
+    }
+
+
+def calculate_icl_power(p_pre, k1, k2, acd):
+    """Estimate ICL spherical power using a simplified vergence model.
+
+    Args:
+        p_pre: Spectacle-plane refraction in diopters, usually spherical
+            equivalent or intended ICL spherical component.
+        k1, k2: Keratometry values in diopters.
+        acd: Anterior chamber depth in mm, used as a simplified effective lens
+            plane distance in aqueous.
+
+    Returns:
+        dict with calculated_power and intermediate values.
+    """
+    p_pre = _number(p_pre, None)
+    k1 = _number(k1, None)
+    k2 = _number(k2, None)
+    acd = _number(acd, None)
+    if p_pre is None or k1 is None or k2 is None or acd is None:
+        raise ValueError("p_pre, k1, k2, and ACD are required for ICL power calculation.")
+
+    vertex_distance_m = 0.012
+    n_v = 1.336
+    p_corneal_plane = p_pre / (1 - vertex_distance_m * p_pre)
+    p_cornea = (k1 + k2) / 2
+
+    # Simplified thick-lens vergence approximation. The ACD is converted to an
+    # aqueous optical distance. This keeps the model stable for clinical UI use.
+    effective_lens_distance_m = (acd / 1000) / n_v
+    p_icl_raw = p_corneal_plane / (1 - effective_lens_distance_m * p_corneal_plane)
+    p_icl = _round_to_half_diopter(p_icl_raw)
+
+    return {
+        "calculated_power": p_icl,
+        "raw_power": round(p_icl_raw, 2),
+        "spectacle_plane_power": round(p_pre, 2),
+        "corneal_plane_power": round(p_corneal_plane, 2),
+        "mean_corneal_power": round(p_cornea, 2),
+        "vertex_distance_mm": 12,
+        "aqueous_refractive_index": n_v,
+    }
+
+
+def calculate_phakic_eye(payload):
+    """Calculate ICL sizing and power for one eye payload from the Phakic form."""
+    size_result = calculate_icl_size(
+        payload.get("wtw"),
+        payload.get("acd"),
+        payload.get("sts"),
+    )
+    p_pre = payload.get("p_pre", payload.get("icl_sph", payload.get("sph")))
+    power_result = calculate_icl_power(
+        p_pre,
+        payload.get("k1"),
+        payload.get("k2"),
+        payload.get("acd"),
+    )
+
+    angle = _number(payload.get("angle"), None)
+    aqd = _number(payload.get("aqd"), None)
+    warnings = list(size_result["warnings"])
+    if angle is not None and angle < 30:
+        warnings.append("Góc tiền phòng < 30 độ: cần đánh giá nguy cơ đóng góc trước khi đặt Phakic ICL.")
+    if aqd is not None and aqd < 2.8:
+        warnings.append("AqD < 2.8 mm: cần kiểm tra lại an toàn khoảng cách nội nhãn.")
+
+    return {
+        "recommended_size": size_result["recommended_size"],
+        "base_size_by_wtw_acd": size_result["base_size_by_wtw_acd"],
+        "sts_size": size_result["sts_size"],
+        "calculated_power": power_result["calculated_power"],
+        "power_detail": power_result,
+        "vault_warnings": warnings,
+    }

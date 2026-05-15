@@ -691,14 +691,27 @@ legend { padding: 0 4px; }
   min-height: 36px;
 }
 
-input.input-danger {
+input.input-danger,
+select.input-danger {
   border-color: #f97066;
   background: #fff1f0;
 }
 
-input.input-warning {
+input.input-warning,
+select.input-warning {
   border-color: #fdb022;
   background: #fffaeb;
+}
+
+.icl-size-hint {
+  display: block;
+  min-height: 15px;
+  margin-top: 4px;
+  color: #b54708;
+  font-size: 12px;
+  font-style: italic;
+  font-weight: 600;
+  line-height: 1.25;
 }
 
 .phakic-alerts {
@@ -812,7 +825,8 @@ input.input-warning {
   .clinical-refraction-grid,
   .eye-layout,
   .metrics { grid-template-columns: 1fr 1fr; }
-  .eye-field-row.cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .eye-field-row.cols-4,
+  .phakic-row.cols-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 760px) {
@@ -828,6 +842,8 @@ input.input-warning {
   .eye-panel .grid-form,
   .eye-field-row.cols-3,
   .eye-field-row.cols-4,
+  .phakic-row.cols-2,
+  .phakic-row.cols-3,
   .metrics,
   .recent-plan-item,
   .list-item { grid-template-columns: 1fr; }

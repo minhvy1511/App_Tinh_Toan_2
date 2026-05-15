@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, render_template, request
 
-from calculations import ABLATION_TABLES, calculate_eye, calculate_plan, suggested_target
+from calculations import ABLATION_TABLES, calculate_eye, calculate_phakic_eye, calculate_plan, suggested_target
 from database import delete_plan, init_db, list_plans, save_plan, update_plan
 
 
@@ -26,6 +26,28 @@ def quick_calculate():
 @app.post("/api/calculate/plan")
 def plan_calculate():
     return jsonify(calculate_plan(request.get_json(silent=True) or {}))
+
+
+@app.post("/api/calculate-phakic")
+def calculate_phakic():
+    payload = request.get_json(silent=True) or {}
+    results = {}
+    errors = {}
+
+    for side in ("od", "os"):
+        eye_payload = payload.get(side)
+        if not eye_payload:
+            continue
+        try:
+            results[side] = calculate_phakic_eye(eye_payload)
+        except ValueError as exc:
+            errors[side] = str(exc)
+
+    if errors:
+        return jsonify({"errors": errors, "results": results}), 400
+    if not results:
+        return jsonify({"error": "Missing od/os payload."}), 400
+    return jsonify({"results": results})
 
 
 @app.post("/api/target")
