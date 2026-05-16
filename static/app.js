@@ -158,7 +158,7 @@ function quickEyeToPlanningEye(data = {}) {
     ls_sph: sph,
     ls_cyl: cyl,
     ls_axis: axis,
-    ls_targ: data.target_sph || "0",
+    ls_targ: data.target_sph ?? "0",
     proc: data.procedure || "SmartSight",
     flap: data.flap_cap || "",
     oz: data.oz || "6.5",
@@ -273,7 +273,9 @@ function unifiedEyeResult(data) {
   const eye = planningEyeToQuickEye(data);
   const result = calc.calcEye(eye);
   if (!result) return null;
-  const target = Number(eye.target_sph || 0);
+  const rawTarget = eye.target_sph;
+  const parsedTarget = rawTarget === "" || rawTarget === null || rawTarget === undefined ? 0 : Number(rawTarget);
+  const target = Number.isFinite(parsedTarget) ? parsedTarget : 0;
   const km = (Number(eye.k1 || 0) + Number(eye.k2 || 0)) / 2;
   return {
     final_laser_sph: result.finalLaserSph,

@@ -31,10 +31,11 @@ const SMILE_HYPEROPIA_SPHERE_LIMIT = 6;
 const SMILE_HYPEROPIA_CYLINDER_LIMIT = 5;
 const SMILE_HYPEROPIA_MMP_LIMIT = 7;
 const SMILE_HYPEROPIA_TAPER_START = 3.5;
-const PRESBYOND_TARGET_DEFAULT = -1.5;
+const PRESBYOND_TARGET_DEFAULT = -1.25;
 const PRESBYOND_TARGET_MIN = -2.5;
 const PRESBYOND_TARGET_MAX = 0;
 const PRESBYOND_FLAP_DEFAULT = 120;
+const PRESBYOND_SPHERICAL_ABERRATION_OFFSET = 16.5;
 const OZ_BASE_MICRONS_PER_DIOPTER = 14;
 
 const loadLS = (key, def) => { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; } catch { return def; } };
@@ -152,19 +153,30 @@ function clampPresbyondTarget(value) {
   return Math.min(PRESBYOND_TARGET_MAX, Math.max(PRESBYOND_TARGET_MIN, parsed));
 }
 
+function normalizePresbyondTargetInput(value) {
+  if (value === "") return "";
+  const parsed = parseFloat(value);
+  if (!Number.isFinite(parsed)) return value;
+  const clamped = Math.min(PRESBYOND_TARGET_MAX, Math.max(PRESBYOND_TARGET_MIN, parsed));
+  return clamped === parsed ? value : String(clamped);
+}
+
 function calculatePresbyondAblation(sphere, cylinder, target, oz = "6.5") {
   const sphereAltered = (parseFloat(sphere) || 0) - clampPresbyondTarget(target);
   const cylinderAltered = parseFloat(cylinder) || 0;
   const totalTreatment = Math.abs(sphereAltered) + Math.abs(cylinderAltered);
   const ozFactor = ozAblationFactor(oz);
   const micronsPerDiopter = OZ_BASE_MICRONS_PER_DIOPTER * ozFactor;
-  const ablation = Math.round(totalTreatment * micronsPerDiopter);
+  const baseAblation = totalTreatment * micronsPerDiopter;
+  const ablation = Math.round(baseAblation + PRESBYOND_SPHERICAL_ABERRATION_OFFSET);
   return {
     sphereAltered,
     cylinderAltered,
     totalTreatment,
     ozFactor,
     micronsPerDiopter,
+    baseAblation,
+    sphericalAberrationOffset: PRESBYOND_SPHERICAL_ABERRATION_OFFSET,
     ablation,
   };
 }
@@ -294,10 +306,10 @@ function syncOdFieldToOs(key, value) {
 
 function applyPresbyondDefaults(eye, force = false) {
   if (!isPresbyondProcedure(dongdoState[eye]?.procedure)) return;
-  if (force || dongdoState[eye].target_sph === "" || dongdoState[eye].target_sph === "0") {
+  if (force || dongdoState[eye].target_sph === "") {
     dongdoState[eye].target_sph = String(PRESBYOND_TARGET_DEFAULT);
   } else {
-    dongdoState[eye].target_sph = String(clampPresbyondTarget(dongdoState[eye].target_sph));
+    dongdoState[eye].target_sph = normalizePresbyondTargetInput(dongdoState[eye].target_sph);
   }
   if (force || dongdoState[eye].flap_cap === "") dongdoState[eye].flap_cap = String(PRESBYOND_FLAP_DEFAULT);
 }
@@ -345,7 +357,8 @@ function calcEye(eye) {
   const flapCap = eye.flap_cap !== "" && !isNaN(parseFloat(eye.flap_cap)) ? parseFloat(eye.flap_cap) : defaultFlapCap(eye.procedure);
 
   // Final Laser Sphere = Sphere (Input) - Target (Input)
-  const target = parseFloat(eye.target_sph) || 0;
+  const parsedTarget = parseFloat(eye.target_sph);
+  const target = Number.isFinite(parsedTarget) ? parsedTarget : 0;
   const finalLaserSph = sph - target;
 
   // Ablation: Total Diopters = |Final Laser Sphere| + |Cylinder|
@@ -588,12 +601,14 @@ function ddSelect(label, key, eye, options) {
 }
 
 function renderTreatmentPlanFields(eye, data) {
-  const showGenericTarget = !isPresbyondProcedure(data.procedure);
-  return `<div class="dd-grid ${showGenericTarget ? "cols-4" : "cols-3"}">
+  const targetAttrs = isPresbyondProcedure(data.procedure)
+    ? `type="number" min="${PRESBYOND_TARGET_MIN}" max="${PRESBYOND_TARGET_MAX}" step="0.25" placeholder="${PRESBYOND_TARGET_DEFAULT}"`
+    : 'type="number" step="0.25" placeholder="0.00"';
+  return `<div class="dd-grid cols-4">
     ${ddField("Sphere (D)", "sph", eye, 'type="number" step="0.25" placeholder="-3.00"')}
     ${ddField("Cylinder (D)", "cyl", eye, 'type="number" step="0.25" placeholder="-1.00"')}
     ${ddField("Axis", "axis", eye, 'type="number" step="1" placeholder="90"')}
-    ${showGenericTarget ? ddField("Target (D)", "target_sph", eye, 'type="number" step="0.25" placeholder="0.00"') : ""}
+    ${ddField("Target (D)", "target_sph", eye, targetAttrs)}
   </div>`;
 }
 
@@ -634,21 +649,7 @@ function renderTransPrkDynamicFields(eye, data, calc) {
 }
 
 function renderPresbyondDynamicFields(eye, data, calc) {
-  const visible = isPresbyondProcedure(data.procedure);
-  const target = clampPresbyondTarget(data.target_sph);
-  const flap = data.flap_cap !== "" && !isNaN(parseFloat(data.flap_cap)) ? parseFloat(data.flap_cap) : PRESBYOND_FLAP_DEFAULT;
-  const plan = calc?.presbyondPlan;
-  return `
-    <div class="dd-smile-row" data-dd-presbyond-fields="${eye}" style="${visible ? "" : "display:none"}">
-      <label>Target (D)
-        <input data-dd-eye="${eye}" data-dd-key="target_sph" type="number" min="${PRESBYOND_TARGET_MIN}" max="${PRESBYOND_TARGET_MAX}" step="0.25" value="${escapeHtml(target)}">
-      </label>
-      <label>Flap Thickness (um)
-        <input data-dd-eye="${eye}" data-dd-key="flap_cap" type="number" step="1" value="${escapeHtml(flap)}">
-      </label>
-      <small>Total Treatment: ${plan ? `${plan.totalTreatment.toFixed(2)} D` : "—"} · OZ factor: ${plan ? `${plan.ozFactor.toFixed(3)} × 14 um/D` : "—"}</small>
-    </div>
-  `;
+  return "";
 }
 
 function renderDongDo() {
@@ -955,13 +956,10 @@ function updateDongDoTransPrkFields() {
 
 function updateDongDoPresbyondFields() {
   ["od", "os"].forEach((eye) => {
-    const row = document.querySelector(`[data-dd-presbyond-fields="${eye}"]`);
     const targetInput = document.querySelector(`[data-dd-eye="${eye}"][data-dd-key="target_sph"]`);
     const flapInput = document.querySelector(`[data-dd-eye="${eye}"][data-dd-key="flap_cap"]`);
-    if (!row) return;
 
     const isPresbyond = isPresbyondProcedure(dongdoState[eye].procedure);
-    row.style.display = isPresbyond ? "" : "none";
     if (!isPresbyond) return;
 
     applyPresbyondDefaults(eye, false);
@@ -1248,7 +1246,7 @@ function attachDongDoEvents() {
       const value = key === "min_thickness"
         ? String(clampSmileMinimumThickness(event.target.value))
         : key === "epithelial_thickness" ? String(clampTransPrkEpithelialThickness(event.target.value))
-          : key === "target_sph" && isPresbyondProcedure(dongdoState[eye].procedure) ? String(clampPresbyondTarget(event.target.value)) : event.target.value;
+          : key === "target_sph" && isPresbyondProcedure(dongdoState[eye].procedure) ? normalizePresbyondTargetInput(event.target.value) : event.target.value;
       dongdoState[eye][key] = value;
       if ((key === "min_thickness" || key === "epithelial_thickness" || (key === "target_sph" && isPresbyondProcedure(dongdoState[eye].procedure))) && event.target.value !== value) event.target.value = value;
       if (eye === "od") syncOdFieldToOs(key, value);
@@ -1279,7 +1277,7 @@ function attachDongDoEvents() {
       const value = key === "min_thickness"
         ? String(clampSmileMinimumThickness(event.target.value))
         : key === "epithelial_thickness" ? String(clampTransPrkEpithelialThickness(event.target.value))
-          : key === "target_sph" && isPresbyondProcedure(dongdoState[eye].procedure) ? String(clampPresbyondTarget(event.target.value)) : event.target.value;
+          : key === "target_sph" && isPresbyondProcedure(dongdoState[eye].procedure) ? normalizePresbyondTargetInput(event.target.value) : event.target.value;
       dongdoState[eye][key] = value;
       if ((key === "min_thickness" || key === "epithelial_thickness" || (key === "target_sph" && isPresbyondProcedure(dongdoState[eye].procedure))) && event.target.value !== value) event.target.value = value;
       if (eye === "od") syncOdFieldToOs(key, value);
