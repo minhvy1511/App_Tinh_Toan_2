@@ -27,7 +27,7 @@ const numericNames = new Set([
   "thin", "cct", "k1", "k2", "kmax", "pupil", "mf_sph", "mf_cyl", "mf_axis",
   "old_sph", "old_cyl", "old_axis", "cy_sph", "cy_cyl", "cy_axis",
   "ret_sph", "ret_cyl", "ret_axis", "ls_sph", "ls_cyl", "ls_axis",
-  "ls_targ", "flap", "inc", "yob", "wtw", "acd", "cct",
+  "ls_targ", "flap", "inc", "yob", "wtw", "ata", "acd", "cct",
   "max_sph", "max_cyl", "max_axis", "vertex"
 ]);
 
@@ -40,9 +40,12 @@ const phakicFieldTemplate = (prefix) => `
     <label>BVD (Vertex)<select name="${prefix}.vertex"><option value="12.0">12.0 mm</option><option value="12.5">12.5 mm</option></select></label>
   </div>
   <div class="phakic-subsection-title">Phakic ICL Biometrics</div>
-  <div class="phakic-row cols-5">
+  <div class="phakic-row cols-3">
     <label>WTW (mm)<input name="${prefix}.wtw" type="number" step="0.1" placeholder="11.8"></label>
+    <label>ATA (mm)<input name="${prefix}.ata" type="number" step="0.1" placeholder="11.8"></label>
     <label>ACD (mm)<input name="${prefix}.acd" data-phakic-check="acd" type="number" step="0.01" placeholder="3.00"></label>
+  </div>
+  <div class="phakic-row cols-3">
     <label>CCT (µm)<input name="${prefix}.cct" type="number" step="1" placeholder="520"></label>
     <label>K1 (D)<input name="${prefix}.k1" type="number" step="0.01" placeholder="43.00"></label>
     <label>K2 (D)<input name="${prefix}.k2" type="number" step="0.01" placeholder="44.00"></label>
@@ -362,6 +365,7 @@ function phakicApiPayload(data) {
     max_axis: eye.max_axis,
     vertex: eye.vertex,
     wtw: eye.wtw,
+    ata: eye.ata,
     cct: eye.cct,
     acd: eye.acd,
     k1: eye.k1,
@@ -510,7 +514,9 @@ function updatePhakicNotes(response) {
   notes.value = allWarnings.length
     ? allWarnings.map((item) => `${item.eye}: ${item.message}`).join("\n")
     : "No current Phakic ICL warning from backend calculation.";
-  alertBox.innerHTML = criticalWarnings.map((item) => `<p><strong>${item.eye}: ${item.message}</strong></p>`).join("");
+  const vaultHtml = allWarnings.map((item) => `<p><strong>${item.eye}: ${item.message}</strong></p>`).join("");
+  const criticalHtml = criticalWarnings.map((item) => `<p><strong>${item.eye}: ${item.message}</strong></p>`).join("");
+  alertBox.innerHTML = `${vaultHtml}${criticalHtml}`;
 }
 
 async function calculatePhakicPreview() {

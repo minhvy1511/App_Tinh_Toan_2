@@ -182,9 +182,58 @@ def calculate_icl_size(wtw, acd):
     }
 
 
-def calculate_icl_sizing(wtw, acd):
+def predict_vault(selected_size, ata, acd):
+    """
+    Du doan do vom (Vault) dua tren Kich thuoc kinh (Size), ATA va ACD.
+    """
+    try:
+        if not ata or not acd or not selected_size:
+            return None, ""
+
+        size = float(selected_size)
+        ata_val = float(ata)
+        acd_val = float(acd)
+
+        # VISION ID Vault Predictor:
+        # Base = 500, Delta Size-ATA = 500*(Size - ATA - 0.8), ACD Modifier = 100*(3.2 - ACD)
+        vault_raw = 500.0 + 500.0 * (size - ata_val - 0.8) + 100.0 * (3.2 - acd_val)
+        vault_final = round(vault_raw / 10.0) * 10
+
+        warning_msg = ""
+        if vault_final < 250:
+            warning_msg = f"⚠ CẢNH BÁO: Nguy cơ LOW VAULT ({vault_final} µm). Xem xét tăng size."
+        elif vault_final > 750:
+            warning_msg = f"⚠ CẢNH BÁO: Nguy cơ HIGH VAULT ({vault_final} µm). Xem xét giảm size."
+        else:
+            warning_msg = f"✓ Vault dự kiến an toàn: {vault_final} µm."
+
+        return int(vault_final), warning_msg
+    except Exception:
+        return None, ""
+
+
+def calculate_icl_sizing(wtw, acd, ata=None):
     size_result = calculate_icl_size(wtw, acd)
-    return {**size_result, "predicted_vault_um": None, "vault_warning": None, "vault_level": "none", "warnings": [item for item in (size_result["size_warning"],) if item]}
+    vault_um = None
+    vault_warning = None
+    vault_level = "none"
+    if ata not in (None, "") and isinstance(size_result["recommended_size"], (int, float)):
+        vault_um, vault_warning = predict_vault(size_result["recommended_size"], ata, acd)
+        if vault_warning and "HIGH VAULT" in vault_warning:
+            vault_level = "danger"
+        elif vault_warning and "LOW VAULT" in vault_warning:
+            vault_level = "warning"
+        elif vault_warning:
+            vault_level = "success"
+        else:
+            vault_level = "success"
+    return {
+        **size_result,
+        "predicted_vault_um": vault_um,
+        "vault_warning": vault_warning,
+        "vault_level": vault_level,
+        "warnings": [item for item in (size_result["size_warning"], vault_warning) if item],
+    }
 
 
 def calculate_icl_power_stear(sph, cyl, axis, k1, k2, acd, vertex=12.0):
@@ -305,7 +354,7 @@ def _phakic_power_detail(sph, cyl, axis, k1, k2, acd, vertex):
 
 def calculate_phakic_eye(payload):
     """Calculate Stella-style ICL sizing and ordered lens power."""
-    size_result = calculate_icl_sizing(payload.get("wtw"), payload.get("acd"))
+    size_result = calculate_icl_sizing(payload.get("wtw"), payload.get("acd"), payload.get("ata"))
     max_sph = _number(payload.get("max_sph", payload.get("sph")), None)
     max_cyl = _number(payload.get("max_cyl", payload.get("cyl", 0)), 0)
     max_axis = _number(payload.get("max_axis", payload.get("axis")), None)
@@ -346,12 +395,12 @@ def calculate_phakic_eye(payload):
         "recommended_size": size_result["recommended_size"],
         "ocos_size": size_result["ocos_size"],
         "base_size_by_wtw_acd": size_result["base_size_by_wtw_acd"],
-        "ata_size": None,
-        "ata_ideal_size": None,
+        "ata_size": size_result["ata_size"],
+        "ata_ideal_size": size_result["ata_ideal_size"],
         "size_warning": size_result["size_warning"],
-        "predicted_vault_um": None,
-        "vault_warning": None,
-        "vault_level": "none",
+        "predicted_vault_um": size_result["predicted_vault_um"],
+        "vault_warning": size_result["vault_warning"],
+        "vault_level": size_result["vault_level"],
         "icl_sph_power": power_result["icl_sph_power"],
         "icl_cyl_power": power_result["icl_cyl_power"],
         "icl_axis": power_result["icl_axis"],
