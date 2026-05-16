@@ -9,12 +9,18 @@ ABLATION_TABLES = {
     "PresbyMAX": {1: 71, 2: 86, 3: 100, 4: 115, 5: 130, 6: 145, 7: 159, 8: 174},
 }
 
+ICL_SIZES = (12.1, 12.6, 13.2, 13.7)
+
 
 def _number(value, default=0):
     try:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _round_to_half_diopter(value):
+    return round(value * 2) / 2
 
 
 def interp_ablation(proc, d):
@@ -131,239 +137,259 @@ def calculate_plan(payload):
     return {"patient_age": patient_age, "eyes": eyes}
 
 
-ICL_SIZES = (12.1, 12.6, 13.2, 13.7)
-
-
-def _nearest_icl_size(value):
-    """Round a continuous sizing estimate to the nearest available STAAR ICL size."""
-    return min(ICL_SIZES, key=lambda size: abs(size - value))
-
-
-def _round_to_half_diopter(value):
-    return round(value * 2) / 2
-
-
-def predict_vault(selected_size, ata):
-    """Predict approximate postoperative ICL vault from selected size and ATA.
-
-    Args:
-        selected_size: Chosen STAAR ICL overall diameter in mm.
-        ata: Angle-to-angle diameter measured by AS-OCT in mm.
-
-    Returns:
-        dict with predicted_vault_um and vault_warning. Returns None values when
-        ATA is not provided.
-    """
-    selected_size = _number(selected_size, None)
-    ata = _number(ata, None) if ata not in (None, "") else None
-    if selected_size is None or ata is None:
-        return {"predicted_vault_um": None, "vault_warning": None, "vault_level": "none"}
-    if selected_size <= 0 or ata <= 0:
-        raise ValueError("Selected size and ATA must be positive numbers.")
-
-    vault = round((selected_size - ata) * 500)
-    if vault < 250:
-        return {
-            "predicted_vault_um": vault,
-            "vault_warning": "Nguy cơ Low Vault: vault dự kiến < 250 um.",
-            "vault_level": "warning",
-        }
-    if vault > 750:
-        return {
-            "predicted_vault_um": vault,
-            "vault_warning": "Nguy cơ High Vault: vault dự kiến > 750 um.",
-            "vault_level": "danger",
-        }
-    return {"predicted_vault_um": vault, "vault_warning": None, "vault_level": "success"}
-
-
-def calculate_icl_sizing(wtw, acd, ata=None):
-    """Estimate EVO ICL overall diameter from WTW/ACD and optional ATA.
-
-    This is a clinical-support simulation, not the official STAAR OCOS algorithm.
-
-    Args:
-        wtw: Horizontal white-to-white corneal diameter in mm.
-        acd: True anterior chamber depth in mm.
-        ata: Optional angle-to-angle diameter in mm from AS-OCT. When present,
-            an ATA-based recommendation is calculated as ATA + 0.7 mm and rounded
-            to the nearest available STAAR size.
-
-    Returns:
-        dict with recommended_size, base_size_by_wtw_acd, ata_size, predicted
-        vault, and warnings.
-    """
+def calculate_icl_size(wtw, acd):
+    """OCOS/Stella-style ICL sizing table using only WTW and ACD."""
     wtw = _number(wtw, None)
     acd = _number(acd, None)
-    ata_value = _number(ata, None) if ata not in (None, "") else None
-    warnings = []
-
     if wtw is None or acd is None:
         raise ValueError("WTW and ACD are required for ICL sizing.")
     if wtw <= 0 or acd <= 0:
         raise ValueError("WTW and ACD must be positive numbers.")
 
-    # Base OCOS-like estimate: four fixed STAAR overall diameters.
-    if wtw < 11.5:
-        base_size = 12.1
-    elif wtw < 12.0:
-        base_size = 12.6
-    elif wtw < 12.5:
-        base_size = 13.2
+    wtw_rounded = round(wtw, 1)
+    if wtw_rounded < 10.5:
+        ocos_size = "Not recommended"
+    elif 10.5 <= wtw_rounded <= 10.6:
+        ocos_size = 12.1 if acd > 3.5 else "Not recommended"
+    elif 10.7 <= wtw_rounded <= 11.0:
+        ocos_size = 12.1
+    elif wtw_rounded == 11.1:
+        ocos_size = 12.6 if acd > 3.5 else 12.1
+    elif 11.2 <= wtw_rounded <= 11.4:
+        ocos_size = 12.6
+    elif 11.5 <= wtw_rounded <= 11.6:
+        ocos_size = 13.2 if acd > 3.5 else 12.6
+    elif 11.7 <= wtw_rounded <= 12.1:
+        ocos_size = 13.2
+    elif wtw_rounded == 12.2:
+        ocos_size = 13.7 if acd > 3.5 else 13.2
+    elif 12.3 <= wtw_rounded <= 12.9:
+        ocos_size = 13.7
     else:
-        base_size = 13.7
+        ocos_size = "Not recommended"
 
-    # Shallow chambers tend to be less tolerant of high vault; deep chambers may
-    # tolerate upsizing. Keep the adjustment conservative: one size step only.
-    if acd < 2.8:
-        warnings.append("ACD < 2.8 mm: ngoài ngưỡng an toàn thường dùng cho EVO ICL, cần đánh giá chỉ định.")
-    if acd < 3.0 and base_size > 12.1:
-        base_size = ICL_SIZES[ICL_SIZES.index(base_size) - 1]
-        warnings.append("ACD nông: đã hạ 1 size trong mô phỏng để giảm nguy cơ High Vault/góc hẹp.")
-    elif acd > 3.5 and base_size < 13.7:
-        base_size = ICL_SIZES[ICL_SIZES.index(base_size) + 1]
-        warnings.append("ACD sâu: đã tăng 1 size trong mô phỏng để hạn chế nguy cơ Low Vault.")
-
-    ata_size = None
-    ata_ideal_size = None
-    if ata_value is not None:
-        if ata_value <= 0:
-            raise ValueError("ATA must be a positive number when provided.")
-        ata_ideal_size = round(ata_value + 0.7, 2)
-        ata_size = _nearest_icl_size(ata_ideal_size)
-
-        size_gap = round(ata_size - base_size, 1)
-        if abs(size_gap) >= 0.6:
-            if size_gap > 0:
-                warnings.append(
-                    "ATA gợi ý size lớn hơn WTW/ACD: nếu chọn theo WTW có nguy cơ Low Vault."
-                )
-            else:
-                warnings.append(
-                    "ATA gợi ý size nhỏ hơn WTW/ACD: nếu chọn theo WTW có nguy cơ High Vault."
-                )
-
-    recommended_size = ata_size if ata_size is not None else base_size
-    vault_result = predict_vault(recommended_size, ata_value)
-    if vault_result["vault_warning"]:
-        warnings.append(vault_result["vault_warning"])
+    size_warning = None
+    if ocos_size == "Not recommended":
+        size_warning = "Not recommended by OCOS WTW/ACD table. Re-check indication and consider alternative planning."
 
     return {
-        "recommended_size": recommended_size,
-        "base_size_by_wtw_acd": base_size,
-        "ata_size": ata_size,
-        "ata_ideal_size": ata_ideal_size,
-        "predicted_vault_um": vault_result["predicted_vault_um"],
-        "vault_warning": vault_result["vault_warning"],
-        "vault_level": vault_result["vault_level"],
-        "warnings": warnings,
+        "ocos_size": ocos_size,
+        "recommended_size": ocos_size,
+        "base_size_by_wtw_acd": ocos_size,
+        "ata_ideal_size": None,
+        "ata_size": None,
+        "size_warning": size_warning,
     }
 
 
-def calculate_icl_size(wtw, acd, ata=None):
-    """Backward-compatible alias for older route code."""
-    return calculate_icl_sizing(wtw, acd, ata)
+def calculate_icl_sizing(wtw, acd):
+    size_result = calculate_icl_size(wtw, acd)
+    return {**size_result, "predicted_vault_um": None, "vault_warning": None, "vault_level": "none", "warnings": [item for item in (size_result["size_warning"],) if item]}
 
 
-def calculate_icl_power(p_pre, k1, k2, acd, vertex_mm=12.0):
-    """Estimate ICL spherical power using a simplified vergence model.
+def calculate_icl_power_stear(sph, cyl, axis, k1, k2, acd, vertex=12.0):
+    sph = float(sph)
+    cyl = float(cyl)
+    axis = float(axis)
+    k_mean = (float(k1) + float(k2)) / 2.0
+    elp = float(acd) / 1000.0  # Đổi ACD sang mét để làm ELP
+    v_dist = float(vertex) / 1000.0  # Đổi BVD sang mét
+    n = 1.336  # Chiết suất thủy dịch
 
-    Args:
-        p_pre: Spectacle-plane refraction in diopters, usually spherical
-            equivalent from maximum spectacle refraction.
-        k1, k2: Keratometry values in diopters.
-        acd: Anterior chamber depth in mm, used as a simplified effective lens
-            plane distance in aqueous.
-        vertex_mm: Spectacle vertex distance in mm, typically 12.0 or 12.5.
+    # Tính 2 kinh tuyến kính gọng (Quy ước loạn cận)
+    spec_m1 = sph
+    spec_m2 = sph + cyl
 
-    Returns:
-        dict with calculated_power and intermediate values.
-    """
-    p_pre = _number(p_pre, None)
-    k1 = _number(k1, None)
-    k2 = _number(k2, None)
-    acd = _number(acd, None)
-    vertex_mm = _number(vertex_mm, 12.0)
-    if p_pre is None or k1 is None or k2 is None or acd is None:
-        raise ValueError("p_pre, k1, k2, and ACD are required for ICL power calculation.")
-    if vertex_mm <= 0:
-        raise ValueError("Vertex distance must be a positive number.")
+    # Quy đổi về mặt phẳng giác mạc
+    cornea_m1 = spec_m1 / (1.0 - (v_dist * spec_m1))
+    cornea_m2 = spec_m2 / (1.0 - (v_dist * spec_m2))
 
-    vertex_distance_m = vertex_mm / 1000
-    n_v = 1.336
-    p_corneal_plane = p_pre / (1 - vertex_distance_m * p_pre)
-    p_cornea = (k1 + k2) / 2
+    # Công thức Phakic ICL chuẩn của van der Heijde
+    def calc_phakic_meridian(p_c):
+        term1 = n / ((n / (p_c + k_mean)) - elp)
+        term2 = n / ((n / k_mean) - elp)
+        return term1 - term2
 
-    # Simplified thick-lens vergence approximation. The ACD is converted to an
-    # aqueous optical distance. This keeps the model stable for clinical UI use.
-    effective_lens_distance_m = (acd / 1000) / n_v
-    p_icl_raw = p_corneal_plane / (1 - effective_lens_distance_m * p_corneal_plane)
-    p_icl = _round_to_half_diopter(p_icl_raw)
+    icl_m1 = calc_phakic_meridian(cornea_m1)
+    icl_m2 = calc_phakic_meridian(cornea_m2)
 
+    # Chuyển đổi sang chuẩn hãng STAAR (Cầu Trừ, Loạn Cộng)
+    icl_sph_raw = min(icl_m1, icl_m2)
+    icl_cyl_raw = abs(icl_m1 - icl_m2)
+
+    # Làm tròn về step 0.50 D gần nhất theo tiêu chuẩn kho kính ICL
+    icl_sph = _select_stella_sphere(icl_sph_raw, sph, cyl)
+    icl_cyl = _select_stella_cylinder(icl_cyl_raw, sph, cyl, k_mean, acd)
+    icl_axis = int((axis + 90) % 180)
+    if icl_axis == 0: icl_axis = 180
+
+    return icl_sph, icl_cyl, icl_axis
+
+
+def calculate_icl_power(sph, cyl, axis, k1, k2, acd, cct=None, vertex=12.0):
+    """Compatibility wrapper for the Stella-style van der Heijde ICL formula."""
+    return calculate_icl_power_stear(sph, cyl, axis, k1, k2, acd, vertex)
+
+
+def _round_half_away(number):
+    """Round to the nearest 0.50 D using optical inventory rounding."""
+    import math
+
+    value = float(number)
+    return math.copysign(math.floor(abs(value) * 2.0 + 0.5) / 2.0, value)
+
+
+def _select_stella_sphere(raw_sphere, spectacle_sph, spectacle_cyl):
+    """Empirical Stella 5.01 lens-selection layer over van der Heijde raw power."""
+    sph = float(spectacle_sph)
+    cyl_abs = abs(float(spectacle_cyl or 0))
+    offset = 0.0
+
+    if cyl_abs > 0:
+        offset = -0.25
+    if -6.5 <= sph <= -5.0 and cyl_abs >= 1.25:
+        offset = -0.45
+    if sph <= -11.0 and cyl_abs >= 1.5:
+        offset = -0.50
+
+    return _round_half_away(float(raw_sphere) + offset)
+
+
+def _select_stella_cylinder(raw_cylinder, spectacle_sph, spectacle_cyl, k_mean, acd):
+    """Select STAAR toric cylinder from raw meridian difference and Stella cases."""
+    cyl_abs = abs(float(spectacle_cyl or 0))
+    sph = float(spectacle_sph)
+    k_mean = float(k_mean)
+    acd = float(acd)
+
+    if cyl_abs < 0.25:
+        return 0.0
+    if cyl_abs >= 2.75:
+        return _round_half_away(cyl_abs + 0.5)
+    if cyl_abs >= 1.7:
+        return 2.0 if sph <= -11.0 else 1.5
+    if cyl_abs >= 1.45:
+        return 1.5
+    if cyl_abs >= 1.2:
+        return 1.5 if sph >= -6.5 else 1.0
+    if cyl_abs >= 0.9:
+        return 1.0
+    if cyl_abs >= 0.7:
+        return 1.0 if (acd >= 3.5 or k_mean >= 43.0) else 0.5
+    return max(0.5, _round_half_away(float(raw_cylinder)))
+
+
+def _phakic_power_detail(sph, cyl, axis, k1, k2, acd, vertex):
+    sph = float(sph)
+    cyl = float(cyl)
+    axis = float(axis)
+    k1 = float(k1)
+    k2 = float(k2)
+    acd = float(acd)
+    vertex = float(vertex)
+    v_dist = vertex / 1000.0
+    spec_m1 = sph
+    spec_m2 = sph + cyl
+    cornea_m1 = spec_m1 / (1.0 - (v_dist * spec_m1))
+    cornea_m2 = spec_m2 / (1.0 - (v_dist * spec_m2))
+    k_mean = (k1 + k2) / 2.0
     return {
-        "calculated_power": p_icl,
-        "raw_power": round(p_icl_raw, 2),
-        "spectacle_plane_power": round(p_pre, 2),
-        "corneal_plane_power": round(p_corneal_plane, 2),
-        "mean_corneal_power": round(p_cornea, 2),
-        "vertex_distance_mm": vertex_mm,
-        "aqueous_refractive_index": n_v,
+        "spectacle_plane_meridians": [round(spec_m1, 2), round(spec_m2, 2)],
+        "corneal_plane_meridians": [round(cornea_m1, 2), round(cornea_m2, 2)],
+        "mean_k": round(k_mean, 2),
+        "vertex_distance_mm": vertex,
+        "elp_m": round(acd / 1000.0, 6),
+        "aqueous_refractive_index": 1.336,
     }
 
 
 def calculate_phakic_eye(payload):
-    """Calculate ICL sizing and power for one eye payload from the Phakic form."""
-    size_result = calculate_icl_sizing(
-        payload.get("wtw"),
-        payload.get("acd"),
-        payload.get("ata", payload.get("sts")),
-    )
-    max_sph = _number(payload.get("max_sph", payload.get("p_pre", payload.get("icl_sph", payload.get("sph")))), None)
-    max_cyl = _number(payload.get("max_cyl", payload.get("icl_cyl", 0)), 0)
-    if max_sph is None:
-        p_pre = None
-    else:
-        # Use spherical equivalent from maximum spectacle refraction for the
-        # simplified ICL spherical power estimate. Toric planning can still use
-        # max_cyl/max_axis separately on the clinical UI.
-        p_pre = max_sph + (max_cyl / 2)
-    target_axis = _number(payload.get("max_axis"), None)
-    calculated_cyl_power = _round_to_half_diopter(max_cyl) if max_cyl is not None else 0
-    power_result = calculate_icl_power(
-        p_pre,
+    """Calculate Stella-style ICL sizing and ordered lens power."""
+    size_result = calculate_icl_sizing(payload.get("wtw"), payload.get("acd"))
+    max_sph = _number(payload.get("max_sph", payload.get("sph")), None)
+    max_cyl = _number(payload.get("max_cyl", payload.get("cyl", 0)), 0)
+    max_axis = _number(payload.get("max_axis", payload.get("axis")), None)
+    vertex = _number(payload.get("vertex", 12.0), 12.0)
+    cct = _number(payload.get("cct"), None)
+    k1 = _number(payload.get("k1"), None)
+    k2 = _number(payload.get("k2"), None)
+    acd = _number(payload.get("acd"), None)
+    icl_sph_power, icl_cyl_power, icl_axis = calculate_icl_power_stear(
+        payload.get("max_sph", payload.get("sph")),
+        payload.get("max_cyl", payload.get("cyl", 0)),
+        payload.get("max_axis", payload.get("axis")),
         payload.get("k1"),
         payload.get("k2"),
         payload.get("acd"),
         payload.get("vertex", 12.0),
     )
+    detail = _phakic_power_detail(max_sph, max_cyl, max_axis, k1, k2, acd, vertex)
+    size_label = _format_icl_size(size_result["recommended_size"])
+    model = f"VTICM5_{size_label}" if abs(icl_cyl_power) > 0.001 else f"VICM5_{size_label}"
+    power_result = {
+        "icl_sph_power": icl_sph_power,
+        "icl_cyl_power": icl_cyl_power,
+        "icl_axis": icl_axis,
+        "calculated_power": icl_sph_power,
+        "calculated_cyl_power": icl_cyl_power,
+        "target_axis": icl_axis,
+        "vertex_distance_mm": vertex,
+        "model": model,
+        **detail,
+        "aqueous_refractive_index": 1.336,
+    }
 
-    angle = _number(payload.get("angle"), None)
-    aqd = _number(payload.get("aqd"), None)
     warnings = list(size_result["warnings"])
-    if angle is not None and angle < 30:
-        warnings.append("Góc tiền phòng < 30 độ: cần đánh giá nguy cơ đóng góc trước khi đặt Phakic ICL.")
-    if aqd is not None and aqd < 2.8:
-        warnings.append("AqD < 2.8 mm: cần kiểm tra lại an toàn khoảng cách nội nhãn.")
+    critical_warnings = []
 
     return {
         "recommended_size": size_result["recommended_size"],
+        "ocos_size": size_result["ocos_size"],
         "base_size_by_wtw_acd": size_result["base_size_by_wtw_acd"],
-        "ata_size": size_result["ata_size"],
-        "ata_ideal_size": size_result["ata_ideal_size"],
-        "predicted_vault_um": size_result["predicted_vault_um"],
-        "vault_warning": size_result["vault_warning"],
-        "vault_level": size_result["vault_level"],
+        "ata_size": None,
+        "ata_ideal_size": None,
+        "size_warning": size_result["size_warning"],
+        "predicted_vault_um": None,
+        "vault_warning": None,
+        "vault_level": "none",
+        "icl_sph_power": power_result["icl_sph_power"],
+        "icl_cyl_power": power_result["icl_cyl_power"],
+        "icl_axis": power_result["icl_axis"],
         "calculated_power": power_result["calculated_power"],
-        "calculated_cyl_power": calculated_cyl_power,
-        "target_axis": target_axis,
+        "calculated_cyl_power": power_result["calculated_cyl_power"],
+        "target_axis": power_result["target_axis"],
         "max_refraction": {
             "sph": max_sph,
             "cyl": max_cyl,
-            "axis": target_axis,
-            "va": payload.get("max_va"),
+            "axis": max_axis,
             "vertex": power_result["vertex_distance_mm"],
-            "spherical_equivalent": round(p_pre, 2) if p_pre is not None else None,
+        },
+        "preop_summary": {
+            "sph": max_sph,
+            "cyl": max_cyl,
+            "axis": max_axis,
+            "vertex": vertex,
+            "wtw": _number(payload.get("wtw"), None),
+            "acd": acd,
+            "cct": cct,
+            "k1": k1,
+            "k2": k2,
+            "recommended_size": size_result["recommended_size"],
+        },
+        "ordered_lens": {
+            "model": model,
+            "sphere": icl_sph_power,
+            "cylinder": icl_cyl_power,
+            "axis": icl_axis if abs(icl_cyl_power) > 0.001 else None,
+            "status": "Calculated",
         },
         "power_detail": power_result,
         "vault_warnings": warnings,
+        "critical_warnings": critical_warnings,
     }
+
+
+def _format_icl_size(size):
+    if isinstance(size, (int, float)):
+        return f"{float(size):.1f}"
+    return str(size or "")

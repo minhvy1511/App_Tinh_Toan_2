@@ -27,31 +27,25 @@ const numericNames = new Set([
   "thin", "cct", "k1", "k2", "kmax", "pupil", "mf_sph", "mf_cyl", "mf_axis",
   "old_sph", "old_cyl", "old_axis", "cy_sph", "cy_cyl", "cy_axis",
   "ret_sph", "ret_cyl", "ret_axis", "ls_sph", "ls_cyl", "ls_axis",
-  "ls_targ", "flap", "inc", "yob", "wtw", "ata", "angle", "acd", "aqd",
-  "cd", "max_sph", "max_cyl", "max_axis", "vertex"
+  "ls_targ", "flap", "inc", "yob", "wtw", "acd", "cct",
+  "max_sph", "max_cyl", "max_axis", "vertex"
 ]);
 
 const phakicFieldTemplate = (prefix) => `
   <div class="phakic-subsection-title">Maximum Spectacle Refraction</div>
-  <div class="phakic-row cols-5">
+  <div class="phakic-row cols-4">
     <label>Sph<input name="${prefix}.max_sph" type="number" step="0.25" placeholder="-8.00"></label>
     <label>Cyl<input name="${prefix}.max_cyl" type="number" step="0.25" placeholder="-1.50"></label>
     <label>Axis<input name="${prefix}.max_axis" type="number" step="1" placeholder="90"></label>
-    <label>BCVA<input name="${prefix}.max_va" type="text" placeholder="20/20"></label>
-    <label>Vertex<select name="${prefix}.vertex"><option value="12.0">12.0 mm</option><option value="12.5">12.5 mm</option></select></label>
+    <label>BVD (Vertex)<select name="${prefix}.vertex"><option value="12.0">12.0 mm</option><option value="12.5">12.5 mm</option></select></label>
   </div>
   <div class="phakic-subsection-title">Phakic ICL Biometrics</div>
-  <div class="phakic-row cols-4">
+  <div class="phakic-row cols-5">
     <label>WTW (mm)<input name="${prefix}.wtw" type="number" step="0.1" placeholder="11.8"></label>
-    <label>ATA (mm)<input name="${prefix}.ata" type="number" step="0.1" placeholder="11.8"></label>
     <label>ACD (mm)<input name="${prefix}.acd" data-phakic-check="acd" type="number" step="0.01" placeholder="3.00"></label>
-    <label>AqD (mm)<input name="${prefix}.aqd" type="number" step="0.01" placeholder="2.80"></label>
-  </div>
-  <div class="phakic-row cols-4">
+    <label>CCT (µm)<input name="${prefix}.cct" type="number" step="1" placeholder="520"></label>
     <label>K1 (D)<input name="${prefix}.k1" type="number" step="0.01" placeholder="43.00"></label>
     <label>K2 (D)<input name="${prefix}.k2" type="number" step="0.01" placeholder="44.00"></label>
-    <label>ECD<input name="${prefix}.cd" data-phakic-check="cd" type="number" step="1" placeholder="2600"></label>
-    <label>ACA<input name="${prefix}.angle" type="number" step="1" placeholder="35"></label>
   </div>
   <div class="phakic-alerts" data-phakic-alerts="${prefix}"></div>
 `;
@@ -346,9 +340,6 @@ function phakicWarnings(eye = {}) {
   if (Number(eye.acd) > 0 && Number(eye.acd) < 2.8) {
     warnings.push({ field: "acd", level: "danger", message: "Contraindication: ACD is too shallow" });
   }
-  if (Number(eye.cd) > 0 && Number(eye.cd) < 2000) {
-    warnings.push({ field: "cd", level: "warning", message: "Warning: low endothelial cell density" });
-  }
   return warnings;
 }
 
@@ -367,13 +358,10 @@ function phakicApiPayload(data) {
     max_sph: eye.max_sph,
     max_cyl: eye.max_cyl,
     max_axis: eye.max_axis,
-    max_va: eye.max_va,
     vertex: eye.vertex,
     wtw: eye.wtw,
-    ata: eye.ata,
-    angle: eye.angle,
+    cct: eye.cct,
     acd: eye.acd,
-    aqd: eye.aqd,
     k1: eye.k1,
     k2: eye.k2,
   });
@@ -384,57 +372,57 @@ function phakicApiPayload(data) {
 }
 
 function renderPhakicEyeResult(label, result) {
-  const warnings = result.vault_warnings || [];
-  const cylPower = Number(result.calculated_cyl_power || 0);
-  const targetAxis = Number(result.target_axis || result.max_refraction?.axis || 0);
-  const axisLabel = Number.isFinite(targetAxis) && targetAxis > 0 ? `${targetAxis.toFixed(0)}°` : "—";
-  const predictedVault = Number(result.predicted_vault_um);
-  const hasVault = Number.isFinite(predictedVault);
-  const vaultMarker = hasVault ? Math.max(0, Math.min(100, predictedVault / 10)) : 0;
-  const toricLabel = Math.abs(cylPower) > 0.001 ? `${cylPower >= 0 ? "+" : ""}${cylPower.toFixed(2)} D` : "Non-Toric";
-  const lensModel = Math.abs(cylPower) > 0.001 ? "EVO+ Toric" : "EVO+";
-  const vaultValue = hasVault ? `${result.predicted_vault_um} µm` : "No ATA";
-  const comparisonTable = `
-    <div class="phakic-sizing-compare" aria-label="Sizing comparison">
-      <div><span>OCOS Sizing (WTW)</span><strong>${result.base_size_by_wtw_acd ?? "—"} mm</strong></div>
-      <div><span>Ideal Sizing (ATA)</span><strong>${result.ata_size ?? "—"} mm</strong></div>
-    </div>
-  `;
-  const metrics = [
-    `<div class="metric"><span>Recommended Size</span><strong>${result.recommended_size} mm</strong></div>`,
-    `<div class="metric vault-metric ${result.vault_level === "danger" ? "danger" : result.vault_level === "warning" ? "warning" : result.vault_level === "success" ? "success" : ""}">
-      <span>Predicted Vault</span>
-      <strong>${vaultValue}</strong>
-      <div class="vault-gauge" aria-label="Vault gauge from 0 to 1000 microns">
-        <div class="vault-safe-band"></div>
-        <i style="left:${vaultMarker}%"></i>
-      </div>
-      <div class="vault-scale"><span>0</span><span>250</span><span>750</span><span>1000 µm</span></div>
-    </div>`,
-    `<div class="metric"><span>ICL Sph Power</span><strong>${result.calculated_power >= 0 ? "+" : ""}${result.calculated_power.toFixed(2)} D</strong></div>`,
-    `<div class="metric"><span>ICL Cyl Power</span><strong>${toricLabel}</strong></div>`,
-    `<div class="metric"><span>Target Axis</span><strong>${axisLabel}</strong></div>`,
-    `<div class="metric"><span>Lens Model</span><strong>${lensModel}</strong></div>`,
-  ];
+  const preop = result.preop_summary || {};
+  const lens = result.ordered_lens || {};
+  const fmt = (value, suffix = "", digits = null) => {
+    if (value === null || value === undefined || value === "") return "—";
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "—";
+    const text = digits === null ? String(value) : n.toFixed(digits);
+    return `${text}${suffix}`;
+  };
+  const signed = (value) => {
+    if (value === null || value === undefined || value === "") return "—";
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "—";
+    return `${n >= 0 ? "+" : ""}${n.toFixed(2)} D`;
+  };
+  const sizeText = Number.isFinite(Number(result.recommended_size))
+    ? `${Number(result.recommended_size).toFixed(1)} mm`
+    : (result.recommended_size || "—");
   return `
     <section class="result-card phakic-result-card">
       <h2>${label}</h2>
-      <div class="metrics">
-        ${metrics.join("")}
+      <div class="phakic-stella-grid">
+        <table class="phakic-stella-table">
+          <caption>Pre-Op Summary</caption>
+          <tbody>
+            <tr><th>Sph</th><td>${signed(preop.sph)}</td><th>Cyl</th><td>${signed(preop.cyl)}</td></tr>
+            <tr><th>Axis</th><td>${fmt(preop.axis, "°", 0)}</td><th>BVD</th><td>${fmt(preop.vertex, " mm", 1)}</td></tr>
+            <tr><th>WTW</th><td>${fmt(preop.wtw, " mm", 1)}</td><th>ACD</th><td>${fmt(preop.acd, " mm", 2)}</td></tr>
+            <tr><th>CCT</th><td>${fmt(preop.cct, " µm", 0)}</td><th>K1 / K2</th><td>${fmt(preop.k1, "", 2)} / ${fmt(preop.k2, "", 2)} D</td></tr>
+            <tr><th>OCOS Size</th><td colspan="3">${sizeText}</td></tr>
+          </tbody>
+        </table>
+        <table class="phakic-stella-table phakic-lens-table">
+          <caption>Calculation & Ordered Lenses</caption>
+          <thead>
+            <tr><th>Model</th><th>Sphere (D)</th><th>Cylinder (D)</th><th>Axis (°)</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>${lens.model || "—"}</strong></td>
+              <td class="phakic-power">${signed(lens.sphere)}</td>
+              <td class="phakic-power">${Number(lens.cylinder || 0) > 0 ? signed(lens.cylinder) : "Non-Toric"}</td>
+              <td class="phakic-power">${fmt(lens.axis, "°", 0)}</td>
+              <td><span class="phakic-status">${lens.status || "Calculated"}</span></td>
+            </tr>
+          </tbody>
+        </table>
       </div>
-      <div class="phakic-axis-simulation">
-        <div>
-          <span>Axis Simulation</span>
-          <strong>${axisLabel}</strong>
-        </div>
-        <canvas class="axis-canvas" width="180" height="180" data-axis="${Number.isFinite(targetAxis) ? targetAxis : 0}" aria-label="Axis simulation ${axisLabel}"></canvas>
-      </div>
-      ${warnings.length
-        ? `<div class="notice warning phakic-warning-box">
-            <div class="phakic-warning-text">${warnings.map((message) => `<p>${message}</p>`).join("")}</div>
-            ${comparisonTable}
-          </div>`
-        : `<div class="notice success">No notable vault warning from the current data.</div>`}
+      ${(result.vault_warnings || []).length
+        ? `<div class="notice warning">${result.vault_warnings.map((message) => `<p>${message}</p>`).join("")}</div>`
+        : ""}
     </section>
   `;
 }
@@ -499,6 +487,30 @@ function drawPhakicAxisCanvases() {
   document.querySelectorAll(".axis-canvas").forEach(drawAxisCanvas);
 }
 
+function collectPhakicWarnings(response) {
+  return ["od", "os"].flatMap((eye) => {
+    const result = response.results?.[eye];
+    const label = eye === "od" ? "OD" : "OS";
+    return (result?.vault_warnings || []).map((message) => ({ eye: label, message }));
+  });
+}
+
+function updatePhakicNotes(response) {
+  const notes = document.querySelector('#phakicForm textarea[name="notes"]');
+  const alertBox = document.getElementById("phakicNotesAlert");
+  if (!notes || !alertBox) return;
+  const allWarnings = collectPhakicWarnings(response);
+  const criticalWarnings = ["od", "os"].flatMap((eye) => {
+    const result = response.results?.[eye];
+    const label = eye === "od" ? "OD" : "OS";
+    return (result?.critical_warnings || []).map((message) => ({ eye: label, message }));
+  });
+  notes.value = allWarnings.length
+    ? allWarnings.map((item) => `${item.eye}: ${item.message}`).join("\n")
+    : "No current Phakic IOL warning from backend calculation.";
+  alertBox.innerHTML = criticalWarnings.map((item) => `<p><strong>${item.eye}: ${item.message}</strong></p>`).join("");
+}
+
 async function calculatePhakicPreview() {
   const target = document.getElementById("phakicResult");
   const form = document.getElementById("phakicForm");
@@ -506,7 +518,7 @@ async function calculatePhakicPreview() {
   const data = formToNestedObject(form);
   const payload = phakicApiPayload(data);
   if (!payload.od && !payload.os) {
-    target.innerHTML = `<div class="notice warning">Enter Sph/Cyl, Vertex, WTW, ATA, ACD, and K1/K2 to view Phakic IOL results.</div>`;
+    target.innerHTML = `<div class="notice warning">Enter Sph/Cyl, Axis, BVD, WTW, ACD, CCT, and K1/K2 to view Phakic IOL results.</div>`;
     return;
   }
   try {
@@ -514,7 +526,7 @@ async function calculatePhakicPreview() {
     const od = response.results.od ? renderPhakicEyeResult("Right Eye (OD)", response.results.od) : "";
     const os = response.results.os ? renderPhakicEyeResult("Left Eye (OS)", response.results.os) : "";
     target.innerHTML = `${od}${os}`;
-    window.requestAnimationFrame(drawPhakicAxisCanvases);
+    updatePhakicNotes(response);
   } catch (error) {
     target.innerHTML = `<div class="notice danger">Insufficient data for Phakic IOL calculation: ${error.message}</div>`;
   }

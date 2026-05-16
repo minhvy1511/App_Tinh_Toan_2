@@ -671,6 +671,47 @@ legend { padding: 0 4px; }
   gap: 12px;
 }
 
+.phakic-brand-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 16px 18px;
+  border-radius: 10px;
+  background: #104c54;
+  color: #fff;
+  box-shadow: 0 12px 28px rgba(16, 76, 84, 0.18);
+}
+
+.phakic-brand-banner img {
+  width: 68px;
+  height: 68px;
+  border: 2px solid rgba(255, 255, 255, 0.75);
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.phakic-brand-banner div {
+  display: grid;
+  gap: 4px;
+}
+
+.phakic-brand-banner strong {
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.phakic-brand-banner span {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.phakic-brand-banner small {
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 12px;
+}
+
 .phakic-row {
   display: grid;
   gap: 10px;
@@ -753,12 +794,99 @@ select.input-warning {
   border: 1px solid #fedf89;
 }
 
+.phakic-notes-alert {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.phakic-notes-alert p {
+  margin: 0;
+  color: #b42318;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .phakic-result-area {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .phakic-result-card {
   border-color: var(--dd-teal-line);
+}
+
+.phakic-stella-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.phakic-stella-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  border: 1px solid var(--dd-teal-line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.phakic-stella-table caption {
+  background: var(--dd-teal);
+  color: white;
+  padding: 9px 12px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.phakic-stella-table th,
+.phakic-stella-table td {
+  border-top: 1px solid #d7ebe7;
+  padding: 9px 10px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.phakic-stella-table th {
+  width: 22%;
+  background: #f5fbfa;
+  color: #034640;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.phakic-stella-table td {
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.phakic-lens-table th {
+  width: auto;
+}
+
+.phakic-lens-table td,
+.phakic-lens-table th {
+  text-align: center;
+}
+
+.phakic-power {
+  color: var(--dd-teal-dark) !important;
+  font-size: 22px !important;
+  font-weight: 900 !important;
+}
+
+.phakic-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  border-radius: 999px;
+  background: #ecfdf3;
+  color: #067647;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 900;
 }
 
 .vault-gauge {
@@ -1126,6 +1254,7 @@ select.input-warning {
   .list-item { grid-template-columns: 1fr; }
   .recent-actions { justify-content: flex-start; }
   .section-title-row { display: grid; }
+  .phakic-brand-banner { align-items: flex-start; }
   .primary-action { width: 100%; }
 }
 

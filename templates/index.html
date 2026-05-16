@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>VISION ID</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=20260516-screening-banners1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=20260516-phakic-stella2">
   </head>
   <body>
     <aside class="sidebar">
@@ -136,6 +136,15 @@
           </div>
         </div>
 
+        <div class="phakic-brand-banner">
+          <img src="{{ url_for('static', filename='creator.jpg') }}" alt="VISION ID creator">
+          <div>
+            <strong>VISION ID</strong>
+            <span>ĐỨNG ĐẦU CÔNG NGHỆ - ĐỊNH HƯỚNG TƯƠNG LAI</span>
+            <small>Công cụ tính toán phẫu thuật khúc xạ được hỗ trợ bởi AI PRO</small>
+          </div>
+        </div>
+
         <form id="phakicForm" class="panel form-panel">
           <input type="hidden" name="plan_type" value="phakic">
           <div class="form-section">
@@ -174,6 +183,7 @@
 
           <label class="notes">Phakic IOL Notes
             <textarea name="notes" rows="4" placeholder="Sizing notes, predicted vault, safety warnings..."></textarea>
+            <div id="phakicNotesAlert" class="phakic-notes-alert" aria-live="polite"></div>
           </label>
 
           <div class="actions">
@@ -191,7 +201,7 @@
 
     </main>
 
-    <script src="{{ url_for('static', filename='app.js') }}?v=20260516-topo-alert1"></script>
+    <script src="{{ url_for('static', filename='app.js') }}?v=20260516-phakic-stella2"></script>
     <script src="{{ url_for('static', filename='dongdo.js') }}?v=20260516-postopk-danger1"></script>
   </body>
 </html>
