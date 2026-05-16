@@ -21,6 +21,16 @@ const TRANS_PRK_STROMAL_ABLATION_TABLE = Object.fromEntries(
     totalAblation - TRANS_PRK_TOTAL_TABLE_INCLUDES_EPI,
   ])
 );
+const SMILE_PHYSICAL_SPHERE_MIN = -15;
+const SMILE_PHYSICAL_SPHERE_MAX = 8;
+const SMILE_PHYSICAL_CYLINDER_LIMIT = 8;
+const SMILE_MYOPIA_SPHERE_LIMIT = -10;
+const SMILE_MYOPIA_CYLINDER_LIMIT = -5;
+const SMILE_MYOPIA_SEQ_LIMIT = -10;
+const SMILE_HYPEROPIA_SPHERE_LIMIT = 6;
+const SMILE_HYPEROPIA_CYLINDER_LIMIT = 5;
+const SMILE_HYPEROPIA_MMP_LIMIT = 7;
+const SMILE_HYPEROPIA_TAPER_START = 3.5;
 
 const loadLS = (key, def) => { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; } catch { return def; } };
 const saveLS = (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} };
@@ -118,6 +128,70 @@ function calculateTransPrkAblation(totalDiopters, epithelialThickness, oz = "6.5
     totalAblation: Math.round(stromalAblation + epiThickness),
     warning: null,
   };
+}
+
+function smileHyperopicCylinderLimit(sphere) {
+  if (sphere <= SMILE_HYPEROPIA_TAPER_START) return SMILE_HYPEROPIA_CYLINDER_LIMIT;
+  if (sphere >= SMILE_HYPEROPIA_SPHERE_LIMIT) return 0;
+  const taperSpan = SMILE_HYPEROPIA_SPHERE_LIMIT - SMILE_HYPEROPIA_TAPER_START;
+  const remainingSphereRoom = SMILE_HYPEROPIA_SPHERE_LIMIT - sphere;
+  return parseFloat(((remainingSphereRoom / taperSpan) * SMILE_HYPEROPIA_CYLINDER_LIMIT).toFixed(2));
+}
+
+function validateSmileTreatmentRange(procedure, sphere, cylinder) {
+  if (procedure !== "SMILE Pro") return { isValid: true, level: "ok", warning: null };
+  const sph = parseFloat(sphere);
+  const cyl = parseFloat(cylinder);
+  if (!Number.isFinite(sph) || !Number.isFinite(cyl)) {
+    return { isValid: false, level: "data-error", warning: "❌ Lỗi dữ liệu: Vui lòng kiểm tra lại trị số khúc xạ nhập vào!" };
+  }
+
+  if (
+    sph < SMILE_PHYSICAL_SPHERE_MIN ||
+    sph > SMILE_PHYSICAL_SPHERE_MAX ||
+    Math.abs(cyl) > SMILE_PHYSICAL_CYLINDER_LIMIT
+  ) {
+    return { isValid: false, level: "data-error", warning: "❌ Lỗi dữ liệu: Vui lòng kiểm tra lại trị số khúc xạ nhập vào!" };
+  }
+
+  const seq = sph + (cyl / 2);
+  const mmp = Math.max(sph, sph + cyl);
+  const cylAbs = Math.abs(cyl);
+  const isMyopicPlan = sph <= 0 && cyl <= 0;
+
+  if (isMyopicPlan) {
+    const outsideMyopia =
+      sph < SMILE_MYOPIA_SPHERE_LIMIT ||
+      cyl < SMILE_MYOPIA_CYLINDER_LIMIT ||
+      seq < SMILE_MYOPIA_SEQ_LIMIT;
+    if (outsideMyopia) {
+      return {
+        isValid: false,
+        level: "zeiss-gray-zone",
+        warning: "🚨 Vùng xám Zeiss: Khúc xạ nằm ngoài ranh giới điều trị an toàn của SMILE Pro!",
+      };
+    }
+    return { isValid: true, level: "ok", warning: null, seq, mmp };
+  }
+
+  const taperedCylinderLimit = smileHyperopicCylinderLimit(sph);
+  const outsideHyperopia =
+    sph > SMILE_HYPEROPIA_SPHERE_LIMIT ||
+    cylAbs > SMILE_HYPEROPIA_CYLINDER_LIMIT ||
+    mmp > SMILE_HYPEROPIA_MMP_LIMIT ||
+    cylAbs > taperedCylinderLimit;
+  if (outsideHyperopia) {
+    return {
+      isValid: false,
+      level: "zeiss-gray-zone",
+      warning: "🚨 Vùng xám Zeiss: Khúc xạ nằm ngoài ranh giới điều trị an toàn của SMILE Pro!",
+      seq,
+      mmp,
+      taperedCylinderLimit,
+    };
+  }
+
+  return { isValid: true, level: "ok", warning: null, seq, mmp, taperedCylinderLimit };
 }
 
 function calcRSB(procedure, cct, flapCap, ablation) {
@@ -227,6 +301,33 @@ function calcEye(eye) {
 
   // Ablation: Total Diopters = |Final Laser Sphere| + |Cylinder|
   const totalD = Math.abs(finalLaserSph) + Math.abs(cyl);
+  const smileRangeValidation = validateSmileTreatmentRange(eye.procedure, sph, cyl);
+  if (!smileRangeValidation.isValid) {
+    return {
+      sph,
+      cyl,
+      finalLaserSph,
+      stromalAblation: null,
+      epithelialThickness: clampTransPrkEpithelialThickness(eye.epithelial_thickness),
+      ablation: null,
+      lenticuleZeissForum: null,
+      minimumThickness: clampSmileMinimumThickness(eye.min_thickness),
+      flapCap,
+      rsb: null,
+      pta: null,
+      nightRisk: false,
+      totalD,
+      postK1: null,
+      postK2: null,
+      postKMean: null,
+      vaAlerts: [],
+      topoAlert: false,
+      predictedVA: null,
+      smileRangeValidation,
+      transPrkValidation: { isValid: true, warning: null },
+    };
+  }
+
   // Với TransPRK, calcAblationDepth là stromal ablation theo khúc xạ.
   // Total Ablation = stromal ablation + epithelial thickness.
   const epithelialThickness = clampTransPrkEpithelialThickness(eye.epithelial_thickness);
@@ -267,6 +368,7 @@ function calcEye(eye) {
     sph, cyl, finalLaserSph, stromalAblation, epithelialThickness, ablation, lenticuleZeissForum,
     minimumThickness, flapCap, rsb, pta, nightRisk, totalD, postK1, postK2, postKMean,
     vaAlerts, topoAlert, predictedVA,
+    smileRangeValidation,
     transPrkValidation: isTransPrkProcedure(eye.procedure)
       ? { isValid: transPrkAblation.isValid, warning: transPrkAblation.warning }
       : { isValid: true, warning: null },
@@ -288,6 +390,7 @@ window.VisionIDCalculator = {
   calcRSB,
   calcPTA,
   calculateTransPrkAblation,
+  validateSmileTreatmentRange,
   ptaLevel,
   ptaLabel,
   calcEye,
@@ -505,7 +608,7 @@ function renderDongDoPlanning() {
         <label>Patient ID<input data-dd-patient="id" value="${escapeHtml(dongdoState.patient.id)}" placeholder="BN-2026-001"></label>
         <label>Year of Birth<input data-dd-patient="year" type="number" value="${escapeHtml(dongdoState.patient.year)}" placeholder="1996"></label>
         <label>Dominant<select data-dd-patient="dominant"><option value="OD" ${dongdoState.patient.dominant === "OD" ? "selected" : ""}>OD</option><option value="OS" ${dongdoState.patient.dominant === "OS" ? "selected" : ""}>OS</option></select></label>
-        <label>Surgeon<input value="${escapeHtml(dongdoState.surgeon)}" disabled></label>
+        <label>Surgeon<input data-dd-surgeon value="${escapeHtml(dongdoState.surgeon)}" placeholder="Tên bác sĩ"></label>
       </div>
     </section>
     ${age !== null && age >= 40 ? `<div class="dd-alert info"><strong>Presbyopia Alert - Age ${age} >= 40</strong><span>Consider Micro-monovision: Target -0.75D to -1.50D in the non-dominant eye.</span></div>` : ""}
@@ -613,6 +716,7 @@ function renderDongDoResults(calc, data) {
   const tissueValue = isSmile ? calc.lenticuleZeissForum : calc.ablation;
   const rsbLimit = isTransPrk ? 350 : 300;
   const transPrkInvalid = isTransPrk && calc.transPrkValidation?.isValid === false;
+  const smileRangeInvalid = isSmile && calc.smileRangeValidation?.isValid === false;
   return `
     <div class="dd-results">
       <div class="dd-results-title">Calculation Results</div>
@@ -621,8 +725,9 @@ function renderDongDoResults(calc, data) {
         <div><span>Input Cylinder</span><strong>${calc.cyl >= 0 ? "+" : ""}${calc.cyl.toFixed(2)} D</strong></div>
         <div><span>Total Diopters</span><strong>${calc.totalD.toFixed(2)} D</strong></div>
       </div>
+      ${smileRangeInvalid ? `<div class="dd-alert danger">${calc.smileRangeValidation.warning}</div>` : ""}
       ${transPrkInvalid ? `<div class="dd-alert danger">${calc.transPrkValidation.warning}</div>` : ""}
-      <div class="dd-main-metric ${transPrkInvalid ? "danger" : ""}"><span>${tissueLabel}</span><strong>${tissueValue !== null ? `${tissueValue} um` : "Không tính"}</strong></div>
+      <div class="dd-main-metric ${transPrkInvalid || smileRangeInvalid ? "danger" : ""}"><span>${tissueLabel}</span><strong>${tissueValue !== null ? `${tissueValue} um` : "Không tính"}</strong></div>
       ${isTransPrk ? `<div class="dd-main-metric ${transPrkInvalid ? "danger" : ""}"><span>Stromal Ablation</span><strong>${calc.stromalAblation !== null ? `${calc.stromalAblation} um` : "Không tính"}</strong></div>` : ""}
       ${calc.rsb !== null ? `<div class="dd-main-metric ${calc.rsb >= rsbLimit ? "safe" : "danger"}"><span>RSB ${calc.rsb < rsbLimit ? "ECTASIA RISK" : ""}</span><strong>${calc.rsb} um</strong></div>` : ""}
       ${calc.pta !== null ? `<div class="dd-main-metric ${tier}"><span>PTA - ${ptaLabel(calc.pta, data.procedure)}</span><strong>${calc.pta}%</strong></div>` : ""}
@@ -632,7 +737,7 @@ function renderDongDoResults(calc, data) {
       ${tier === "danger" ? `<div class="dd-alert danger">Consider Phakic ICL as an alternative procedure</div>` : ""}
       ${calc.nightRisk ? `<div class="dd-alert warning">Night Vision Risk: Mesopic Pupil > OZ</div>` : ""}
       ${calc.vaAlerts.map((a) => `<div class="dd-alert warning">${a.msg}</div>`).join("")}
-      ${renderOzOptimization(data, calc)}
+      ${smileRangeInvalid ? "" : renderOzOptimization(data, calc)}
     </div>
   `;
 }
@@ -971,6 +1076,7 @@ function printReportHtml(reportHtml) {
 function dongDoTabItems(root) {
   return [...root.querySelectorAll([
     "#dongdo [data-dd-patient]",
+    "#dongdo [data-dd-surgeon]",
     "#dongdo [data-dd-eye]",
     "#dongdo [data-dd-corvis]",
   ].join(","))].filter((item) => !item.disabled && item.offsetParent !== null);
@@ -998,7 +1104,7 @@ function attachDongDoEvents() {
     const focusables = dongDoTabItems(root);
 
     if (!focusables.length) return;
-    const currentIndex = focusables.indexOf(event.target.closest("[data-dd-patient], [data-dd-eye], [data-dd-corvis]"));
+    const currentIndex = focusables.indexOf(event.target.closest("[data-dd-patient], [data-dd-surgeon], [data-dd-eye], [data-dd-corvis]"));
 
     event.preventDefault();
     if (currentIndex === -1) {
@@ -1017,8 +1123,13 @@ function attachDongDoEvents() {
 
   document.addEventListener("input", (event) => {
     const patientKey = event.target.dataset.ddPatient;
+    const surgeon = event.target.dataset.ddSurgeon !== undefined;
     const eye = event.target.dataset.ddEye;
     const key = event.target.dataset.ddKey;
+    if (surgeon) {
+      dongdoState.surgeon = event.target.value;
+      syncDongDoSharedState();
+    }
     if (patientKey) {
       dongdoState.patient[patientKey] = event.target.value;
       syncDongDoSharedState();
@@ -1038,8 +1149,13 @@ function attachDongDoEvents() {
   });
   document.addEventListener("change", (event) => {
     const patientKey = event.target.dataset.ddPatient;
+    const surgeon = event.target.dataset.ddSurgeon !== undefined;
     const eye = event.target.dataset.ddEye;
     const key = event.target.dataset.ddKey;
+    if (surgeon) {
+      dongdoState.surgeon = event.target.value;
+      syncDongDoSharedState();
+    }
     if (patientKey) {
       dongdoState.patient[patientKey] = event.target.value;
       syncDongDoSharedState();
