@@ -106,7 +106,7 @@ const displayProcedures = [
   { name: "SmartSight", color: "purple" },
   { name: "Femto-LASIK", color: "indigo" },
   { name: "Trans-PRK", color: "green", source: "SmartSurface" },
-  { name: "Phakic IOL", color: "orange" },
+  { name: "Phakic ICL", color: "orange" },
 ];
 
 let appConfig = { procedures: [], optical_zones: [] };
@@ -347,8 +347,8 @@ function calculatePhakicPlan(data) {
   return {
     patient_age: new Date().getFullYear() - Number(data.patient?.yob || new Date().getFullYear()),
     eyes: {
-      od: { warnings: phakicWarnings(data.od), procedure: "Phakic IOL" },
-      os: { warnings: phakicWarnings(data.os), procedure: "Phakic IOL" },
+      od: { warnings: phakicWarnings(data.od), procedure: "Phakic ICL" },
+      os: { warnings: phakicWarnings(data.os), procedure: "Phakic ICL" },
     },
   };
 }
@@ -507,7 +507,7 @@ function updatePhakicNotes(response) {
   });
   notes.value = allWarnings.length
     ? allWarnings.map((item) => `${item.eye}: ${item.message}`).join("\n")
-    : "No current Phakic IOL warning from backend calculation.";
+    : "No current Phakic ICL warning from backend calculation.";
   alertBox.innerHTML = criticalWarnings.map((item) => `<p><strong>${item.eye}: ${item.message}</strong></p>`).join("");
 }
 
@@ -518,7 +518,7 @@ async function calculatePhakicPreview() {
   const data = formToNestedObject(form);
   const payload = phakicApiPayload(data);
   if (!payload.od && !payload.os) {
-    target.innerHTML = `<div class="notice warning">Enter Sph/Cyl, Axis, BVD, WTW, ACD, CCT, and K1/K2 to view Phakic IOL results.</div>`;
+    target.innerHTML = `<div class="notice warning">Enter Sph/Cyl, Axis, BVD, WTW, ACD, CCT, and K1/K2 to view Phakic ICL results.</div>`;
     return;
   }
   try {
@@ -528,7 +528,7 @@ async function calculatePhakicPreview() {
     target.innerHTML = `${od}${os}`;
     updatePhakicNotes(response);
   } catch (error) {
-    target.innerHTML = `<div class="notice danger">Insufficient data for Phakic IOL calculation: ${error.message}</div>`;
+    target.innerHTML = `<div class="notice danger">Insufficient data for Phakic ICL calculation: ${error.message}</div>`;
   }
 }
 
@@ -541,8 +541,8 @@ async function savePhakicPlan(event) {
   event.preventDefault();
   const data = formToObject(event.currentTarget);
   data.plan_type = "phakic";
-  data.od.proc = "Phakic IOL";
-  data.os.proc = "Phakic IOL";
+  data.od.proc = "Phakic ICL";
+  data.os.proc = "Phakic ICL";
   data.phakic_result = calculatePhakicPlan(data);
   try {
     data.phakic_api_result = await postJson("/api/calculate-phakic", phakicApiPayload(data));
@@ -577,7 +577,7 @@ function renderBreakdown(plans) {
   const counts = new Map();
   plans.forEach((plan) => {
     if (plan.payload?.plan_type === "phakic") {
-      counts.set("Phakic IOL", (counts.get("Phakic IOL") || 0) + 2);
+      counts.set("Phakic ICL", (counts.get("Phakic ICL") || 0) + 2);
       return;
     }
     ["od", "os"].forEach((eye) => {
@@ -608,14 +608,14 @@ function renderRecentPlans(plans) {
   target.innerHTML = plans.map((plan) => {
     const [riskClass, riskText] = riskLevel(plan);
     const isPhakic = plan.payload?.plan_type === "phakic";
-    const odProc = isPhakic ? "Phakic IOL" : plan.payload?.od?.proc || "OD";
-    const osProc = isPhakic ? "Phakic IOL" : plan.payload?.os?.proc || "OS";
+    const odProc = isPhakic ? "Phakic ICL" : plan.payload?.od?.proc || "OD";
+    const osProc = isPhakic ? "Phakic ICL" : plan.payload?.os?.proc || "OS";
     return `
       <article class="list-item recent-plan-item ${riskClass === "high" ? "risk-danger" : ""}">
         <div>
           <strong>${plan.patient_name}</strong>
           <span>${plan.patient_id || "Chưa có mã"} | ${plan.surgeon || "Chưa nhập bác sĩ"} | ${new Date(plan.created_at).toLocaleString("vi-VN")}</span>
-          <span>${isPhakic ? "Phakic IOL" : "Laser"}: OD ${odProc} / OS ${osProc}</span>
+          <span>${isPhakic ? "Phakic ICL" : "Laser"}: OD ${odProc} / OS ${osProc}</span>
         </div>
         <div class="recent-actions">
           <span class="risk ${riskClass}">${riskText}</span>
@@ -800,6 +800,7 @@ function attachCalculation() {
     syncSharedRefractionFromForm(phakicForm);
     schedulePhakicPreview();
   });
+  document.getElementById("printPhakic")?.addEventListener("click", () => window.print());
   document.addEventListener("click", (event) => {
     const review = event.target.closest("[data-review-plan]");
     if (!review) return;

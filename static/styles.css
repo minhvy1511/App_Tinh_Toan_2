@@ -1,6 +1,7 @@
 :root {
   color-scheme: light;
-  font-family: Arial, Helvetica, sans-serif;
+  --app-font: Arial, Helvetica, sans-serif;
+  font-family: var(--app-font);
   --bg: #f8fafc;
   --panel: #ffffff;
   --ink: #0f172a;
@@ -23,6 +24,21 @@
 }
 
 * { box-sizing: border-box; }
+
+html,
+body,
+input,
+select,
+textarea,
+button,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--app-font) !important;
+}
 
 body {
   margin: 0;
@@ -49,6 +65,10 @@ h2 { font-size: 15px; margin-bottom: 16px; }
 p { color: var(--muted); }
 
 .sidebar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  height: 100vh;
   min-height: 100vh;
   background: #fff;
   border-right: 1px solid var(--line);
@@ -680,6 +700,7 @@ legend { padding: 0 4px; }
   border-radius: 10px;
   background: #104c54;
   color: #fff;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
   box-shadow: 0 12px 28px rgba(16, 76, 84, 0.18);
 }
 
@@ -697,12 +718,14 @@ legend { padding: 0 4px; }
 }
 
 .phakic-brand-banner strong {
+  font-family: inherit;
   font-size: 24px;
   font-weight: 900;
   letter-spacing: 0;
 }
 
 .phakic-brand-banner span {
+  font-family: inherit;
   font-size: 13px;
   font-weight: 900;
 }
@@ -1207,6 +1230,7 @@ select.input-warning {
 @media (max-width: 1180px) {
   body { grid-template-columns: 1fr; }
   .sidebar {
+    height: auto;
     min-height: auto;
     position: sticky;
     top: 0;
@@ -1274,6 +1298,7 @@ select.input-warning {
   align-items: center;
   gap: 16px;
   color: white;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
   background:
     linear-gradient(90deg, rgba(5, 46, 74, 0.95) 0%, rgba(12, 93, 114, 0.88) 58%, rgba(38, 155, 114, 0.9) 100%),
     url("/static/creator.jpg") center 38% / cover;
@@ -1295,6 +1320,7 @@ select.input-warning {
 .dd-header span,
 .dd-header em {
   display: block;
+  font-family: inherit;
 }
 
 .dd-creator-copy {
@@ -1897,7 +1923,142 @@ select.input-warning {
 }
 
 @media (max-width: 760px) {
+  .screen {
+    padding: 12px;
+  }
+
+  #phakic .page-head {
+    min-height: auto;
+    padding: 13px 14px;
+    border-radius: 8px;
+  }
+
+  .phakic-brand-banner {
+    gap: 10px;
+    padding: 12px;
+    border-radius: 8px;
+  }
+
+  .phakic-brand-banner img {
+    width: 54px;
+    height: 54px;
+  }
+
+  .phakic-brand-banner strong {
+    font-size: 18px;
+  }
+
+  .phakic-brand-banner span {
+    font-size: 11px;
+    line-height: 1.25;
+  }
+
+  #phakic .form-panel,
+  #phakic .eye-panel,
+  #phakic .result-card,
+  #phakic .ata-guide {
+    padding: 12px;
+    border-radius: 8px;
+  }
+
+  .phakic-eye-layout,
+  .phakic-result-area,
+  .phakic-row.cols-2,
+  .phakic-row.cols-3,
+  .phakic-row.cols-4,
+  .phakic-row.cols-5,
+  .phakic-stella-grid,
+  .phakic-detail-grid,
+  .phakic-axis-simulation,
+  .phakic-warning-box {
+    grid-template-columns: 1fr !important;
+  }
+
+  .phakic-fields,
+  .phakic-row,
+  .phakic-stella-grid {
+    gap: 8px;
+  }
+
+  .phakic-row label,
+  .phakic-row input,
+  .phakic-row select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .phakic-stella-table {
+    table-layout: fixed;
+  }
+
+  .phakic-stella-table th,
+  .phakic-stella-table td {
+    padding: 7px 6px;
+    overflow-wrap: anywhere;
+  }
+
+  .phakic-power {
+    font-size: 17px !important;
+  }
+
+  .axis-canvas {
+    width: 150px;
+    height: 150px;
+    justify-self: center;
+  }
+
+  .dongdo-app {
+    width: 100%;
+    gap: 10px;
+  }
+
+  .dd-header {
+    min-height: auto;
+    padding: 12px;
+    gap: 10px;
+    border-radius: 8px;
+  }
+
+  .dd-header img {
+    width: 54px;
+    height: 54px;
+  }
+
+  .dd-creator-copy {
+    min-width: 0;
+  }
+
+  .dd-header strong {
+    font-size: 17px;
+  }
+
+  .dd-header span {
+    font-size: 12px;
+  }
+
+  .dd-header-actions {
+    gap: 6px;
+  }
+
+  .dd-header-actions button {
+    min-height: 34px;
+    padding: 7px 9px;
+    font-size: 12px;
+  }
+
+  .dd-panel,
+  .dd-eye-card {
+    border-radius: 8px;
+  }
+
+  .dd-patient-grid,
+  .dd-eye-body {
+    padding: 12px;
+    gap: 10px;
+  }
+
   .dd-tabs,
+  .dd-eye-layout,
   .dd-grid.cols-3,
   .dd-grid.cols-2,
   .dd-grid.cols-4,
@@ -1908,5 +2069,562 @@ select.input-warning {
   .dd-row {
     grid-template-columns: 1fr;
   }
+
+  .dd-grid {
+    gap: 7px;
+  }
+
+  .dd-group input,
+  .dd-group select,
+  .dd-panel input,
+  .dd-smile-row input,
+  .dd-smile-row output {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .dd-corvit .dd-segment button {
+    min-height: 46px;
+  }
+
+  .dd-main-metric {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .dd-tabs { display: grid; }
+}
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 5mm;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    width: 100% !important;
+    height: 99% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    overflow: hidden !important;
+    page-break-before: avoid !important;
+    page-break-after: avoid !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body {
+    display: block !important;
+    color: var(--ink);
+    font-size: 8.2px !important;
+    line-height: 1.08 !important;
+  }
+
+  .sidebar,
+  .system-bar,
+  .screen:not(.active),
+  main:has(#phakic.active) .quick-calc-container,
+  main:has(#phakic.active) #overview,
+  main:has(#phakic.active) #planning,
+  .dd-header-actions,
+  .dd-tabs,
+  .dd-search,
+  .recent-actions,
+  #dongdoPrintFrame {
+    display: none !important;
+  }
+
+  main:has(#phakic.active) .phakic-icl-container {
+    display: block !important;
+  }
+
+  .main,
+  #phakic,
+  #dongdo,
+  .dongdo-app {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  #dongdo.screen {
+    display: block !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  .dongdo-app {
+    gap: 3px !important;
+    zoom: 0.78;
+  }
+
+  .dd-header {
+    min-height: 34px !important;
+    margin: 0 0 3px !important;
+    padding: 5px 8px !important;
+    gap: 8px !important;
+    border-radius: 5px !important;
+    box-shadow: none !important;
+  }
+
+  .dd-header img {
+    width: 34px !important;
+    height: 34px !important;
+    border-radius: 7px !important;
+  }
+
+  .dd-header strong {
+    font-size: 13px !important;
+    line-height: 1 !important;
+  }
+
+  .dd-header span {
+    max-width: none !important;
+    margin-top: 2px !important;
+    font-size: 8px !important;
+    line-height: 1.1 !important;
+  }
+
+  .dd-panel,
+  .dd-eye-card,
+  .dd-results {
+    border-radius: 5px !important;
+    box-shadow: none !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    overflow: hidden !important;
+  }
+
+  .dd-panel-title,
+  .dd-eye-card header,
+  .dd-results-title {
+    min-height: 0 !important;
+    padding: 4px 7px !important;
+    font-size: 8px !important;
+    line-height: 1.05 !important;
+  }
+
+  .dd-eye-card header b {
+    width: 18px !important;
+    height: 18px !important;
+    font-size: 8px !important;
+  }
+
+  .dd-eye-card header strong,
+  .dd-eye-card header span {
+    font-size: 8.5px !important;
+    line-height: 1.05 !important;
+  }
+
+  .dd-patient-grid,
+  .dd-eye-body {
+    padding: 5px !important;
+    gap: 4px !important;
+  }
+
+  .dd-patient-grid {
+    grid-template-columns: 1.5fr 1fr .8fr .8fr 1fr !important;
+    margin-bottom: 2mm !important;
+  }
+
+  .dd-eye-layout {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 5px !important;
+    align-items: start !important;
+  }
+
+  .dd-grid,
+  .dd-grid.cols-2,
+  .dd-grid.cols-3,
+  .dd-grid.cols-4,
+  .dd-grid.cols-5 {
+    gap: 3px !important;
+  }
+
+  .dd-grid.cols-2,
+  .dd-grid.cols-3,
+  .dd-grid.cols-4,
+  .dd-grid.cols-5 {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  .dd-group h3 {
+    margin: 0 0 2px !important;
+    font-size: 7.5px !important;
+    line-height: 1.05 !important;
+  }
+
+  .dd-group label,
+  .dd-panel label,
+  .dd-corvit p {
+    gap: 2px !important;
+    font-size: 7px !important;
+    line-height: 1.05 !important;
+  }
+
+  .dd-group input,
+  .dd-group select,
+  .dd-panel input,
+  .dd-smile-row input,
+  .dd-smile-row output {
+    min-height: 17px !important;
+    height: 17px !important;
+    padding: 2px 4px !important;
+    border-radius: 4px !important;
+    font-size: 7.5px !important;
+    line-height: 1 !important;
+  }
+
+  .dd-alert,
+  .dd-main-metric,
+  .dd-empty-calc {
+    margin-top: 2px !important;
+    padding: 3px 5px !important;
+    border-radius: 4px !important;
+    font-size: 7.5px !important;
+    line-height: 1.08 !important;
+  }
+
+  .dd-alert span {
+    margin-top: 1px !important;
+  }
+
+  .dd-corvit,
+  .dd-segment {
+    margin-top: 2px !important;
+  }
+
+  .dd-segment {
+    gap: 2px !important;
+  }
+
+  .dd-segment button,
+  .dd-corvit .dd-segment button {
+    min-height: 24px !important;
+    padding: 2px !important;
+    border-width: 1px !important;
+    border-radius: 4px !important;
+    font-size: 7.2px !important;
+    line-height: 1.05 !important;
+    color: inherit;
+  }
+
+  .dd-corvit .dd-segment button span {
+    font-size: 6.4px !important;
+    line-height: 1.05 !important;
+  }
+
+  .dd-results {
+    margin-top: 2px !important;
+  }
+
+  .dd-result-grid,
+  .dd-mini-grid {
+    gap: 2px !important;
+  }
+
+  .dd-result-grid div,
+  .dd-mini-metric {
+    padding: 3px !important;
+  }
+
+  .dd-result-grid span,
+  .dd-mini-metric span {
+    font-size: 6.6px !important;
+    line-height: 1.05 !important;
+  }
+
+  .dd-result-grid strong,
+  .dd-mini-metric strong {
+    margin-top: 1px !important;
+    font-size: 8px !important;
+    line-height: 1.05 !important;
+  }
+
+  .dd-main-metric {
+    gap: 3px !important;
+    align-items: center !important;
+  }
+
+  .dd-main-metric strong {
+    font-size: 8px !important;
+  }
+
+  .dd-smile-row {
+    gap: 3px !important;
+    margin-top: 3px !important;
+    padding: 4px !important;
+  }
+
+  .dd-panel,
+  .dd-eye-layout,
+  .dd-eye-card,
+  .dd-results,
+  .dd-alert,
+  .dd-main-metric {
+    page-break-before: avoid !important;
+    page-break-after: avoid !important;
+  }
+
+  .dd-oz {
+    display: none !important;
+  }
+
+  #phakic.screen.active {
+    display: block !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    zoom: 0.74;
+  }
+
+  #phakic {
+    color: var(--ink);
+  }
+
+  #phakic .page-head {
+    min-height: 34px !important;
+    margin: 0 0 3px !important;
+    padding: 5px 8px !important;
+    border-radius: 5px !important;
+    box-shadow: none !important;
+  }
+
+  #phakic .page-head h1 {
+    font-size: 13px !important;
+    line-height: 1 !important;
+    margin: 0 0 2px !important;
+  }
+
+  #phakic .page-head p {
+    font-size: 7.5px !important;
+    line-height: 1.05 !important;
+  }
+
+  .phakic-brand-banner {
+    min-height: 34px !important;
+    margin: 0 0 3px !important;
+    padding: 5px 8px !important;
+    gap: 8px !important;
+    border-radius: 5px !important;
+    box-shadow: none !important;
+  }
+
+  .phakic-brand-banner img {
+    width: 34px !important;
+    height: 34px !important;
+    border-radius: 7px !important;
+  }
+
+  .phakic-brand-banner strong {
+    font-size: 13px !important;
+    line-height: 1 !important;
+  }
+
+  .phakic-brand-banner span {
+    font-size: 7.5px !important;
+    line-height: 1.05 !important;
+  }
+
+  #phakic .form-panel,
+  #phakic .eye-panel,
+  #phakic .result-card,
+  #phakic .ata-guide {
+    border-radius: 5px !important;
+    box-shadow: none !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  #phakic .form-panel {
+    gap: 4px !important;
+    padding: 5px !important;
+  }
+
+  #phakic .form-section h2,
+  #phakic .eye-panel h2,
+  #phakic .ata-guide h2,
+  .phakic-result-card h2 {
+    margin: 0 0 3px !important;
+    padding: 4px 7px !important;
+    font-size: 8px !important;
+    line-height: 1.05 !important;
+  }
+
+  #phakic .patient-grid {
+    grid-template-columns: 1.5fr .8fr 1fr 1fr .9fr !important;
+    gap: 3px !important;
+  }
+
+  .phakic-eye-layout {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 5px !important;
+  }
+
+  #phakic .eye-panel {
+    padding: 5px !important;
+  }
+
+  #phakic .eye-panel h2 {
+    margin: -5px -5px 4px !important;
+  }
+
+  .phakic-fields,
+  .phakic-row,
+  .phakic-stella-grid,
+  .phakic-alerts,
+  .phakic-notes-alert {
+    gap: 3px !important;
+  }
+
+  .phakic-row.cols-2,
+  .phakic-row.cols-3,
+  .phakic-row.cols-4,
+  .phakic-row.cols-5 {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  .phakic-subsection-title {
+    margin: 0 !important;
+    font-size: 7.2px !important;
+    line-height: 1.05 !important;
+  }
+
+  .phakic-row label,
+  #phakic label,
+  #phakic fieldset {
+    gap: 2px !important;
+    font-size: 7px !important;
+    line-height: 1.05 !important;
+  }
+
+  #phakic input,
+  #phakic select,
+  #phakic textarea {
+    min-height: 17px !important;
+    height: 17px !important;
+    padding: 2px 4px !important;
+    border-radius: 4px !important;
+    font-size: 7.5px !important;
+    line-height: 1 !important;
+  }
+
+  #phakic textarea {
+    height: 28px !important;
+  }
+
+  #phakic fieldset {
+    padding: 3px 5px !important;
+  }
+
+  #phakic .actions {
+    display: none !important;
+  }
+
+  .phakic-alert,
+  .phakic-notes-alert p,
+  .notice {
+    margin: 0 !important;
+    padding: 3px 5px !important;
+    border-radius: 4px !important;
+    font-size: 7.2px !important;
+    line-height: 1.08 !important;
+  }
+
+  .phakic-result-area {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 5px !important;
+    margin-top: 3px !important;
+  }
+
+  .phakic-result-card {
+    padding: 5px !important;
+  }
+
+  .phakic-stella-table {
+    table-layout: fixed !important;
+    border-radius: 4px !important;
+  }
+
+  .phakic-stella-table caption {
+    padding: 3px 5px !important;
+    font-size: 7.2px !important;
+    line-height: 1.05 !important;
+  }
+
+  .phakic-stella-table th,
+  .phakic-stella-table td {
+    padding: 2.5px 4px !important;
+    font-size: 7px !important;
+    line-height: 1.05 !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .phakic-power {
+    font-size: 9px !important;
+    line-height: 1.05 !important;
+  }
+
+  .phakic-status {
+    min-height: 15px !important;
+    padding: 1px 5px !important;
+    font-size: 6.8px !important;
+  }
+
+  .phakic-detail-grid,
+  .phakic-axis-simulation,
+  .phakic-warning-box {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 3px !important;
+    margin: 3px 0 !important;
+    padding: 4px !important;
+  }
+
+  .phakic-detail-grid div,
+  .phakic-sizing-compare {
+    padding: 4px !important;
+    border-radius: 4px !important;
+  }
+
+  .phakic-detail-grid span,
+  .phakic-axis-simulation span,
+  .phakic-sizing-compare span {
+    font-size: 6.8px !important;
+    margin-bottom: 1px !important;
+  }
+
+  .phakic-detail-grid strong,
+  .phakic-axis-simulation strong,
+  .phakic-sizing-compare strong {
+    font-size: 8px !important;
+  }
+
+  .axis-canvas {
+    width: 58px !important;
+    height: 58px !important;
+  }
+
+  .ata-guide {
+    margin-top: 3px !important;
+    padding: 5px !important;
+  }
+
+  .ata-guide img {
+    max-height: 36mm !important;
+    object-fit: contain !important;
+  }
+
+  input,
+  select,
+  button {
+    -webkit-appearance: none;
+    appearance: none;
+  }
 }

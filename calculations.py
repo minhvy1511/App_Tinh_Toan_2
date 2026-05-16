@@ -119,8 +119,8 @@ def calculate_plan(payload):
         return {
             "patient_age": int(payload.get("current_year") or 2026) - int(_number(payload.get("patient", {}).get("yob"), 1981)),
             "eyes": {
-                "od": {"procedure": "Phakic IOL", "warnings": []},
-                "os": {"procedure": "Phakic IOL", "warnings": []},
+                "od": {"procedure": "Phakic ICL", "warnings": []},
+                "os": {"procedure": "Phakic ICL", "warnings": []},
             },
         }
     current_year = int(payload.get("current_year") or 2026)

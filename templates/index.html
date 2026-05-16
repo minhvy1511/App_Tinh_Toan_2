@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>VISION ID</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=20260516-phakic-stella2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=20260516-print-phakic2">
   </head>
   <body>
     <aside class="sidebar">
@@ -29,7 +29,7 @@
         </button>
         <button class="nav-item" data-screen="phakic">
           <svg viewBox="0 0 24 24"><path d="M3 12s3.5-5 9-5 9 5 9 5-3.5 5-9 5-9-5-9-5Z"/><circle cx="12" cy="12" r="2.5"/><path d="M8 4.5 6.5 7"/><path d="M16 4.5 17.5 7"/></svg>
-          <span>Phakic IOL Calculation</span>
+          <span>Phakic ICL Calculation</span>
         </button>
         <button class="nav-item" data-screen="overview">
           <svg viewBox="0 0 24 24"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg>
@@ -68,7 +68,7 @@
         </section>
       </section>
 
-      <section id="dongdo" class="screen active">
+      <section id="dongdo" class="screen active quick-calc-container">
         <div id="dongdoApp" class="dongdo-app"></div>
       </section>
 
@@ -87,7 +87,7 @@
               <label>Bệnh nhân<input name="patient.name" value="BÙI ĐĂNG TOÀN"></label>
               <label>Năm sinh<input name="patient.yob" type="number" value="1981"></label>
               <label>Mã ID<input name="patient.id" value="BN-2026-001"></label>
-              <label>Phẫu thuật viên<input name="patient.surgeon" value="BS THỦY"></label>
+              <label>Phẫu thuật viên<input name="patient.surgeon"></label>
               <fieldset>
                 <legend>Mắt chủ đạo</legend>
                 <label class="radio"><input type="radio" name="patient.dominant_eye" value="OD" checked> OD</label>
@@ -128,10 +128,10 @@
         <div id="planResult" class="result-area"></div>
       </section>
 
-      <section id="phakic" class="screen">
+      <section id="phakic" class="screen phakic-icl-container">
         <div class="page-head">
           <div>
-            <h1>Phakic IOL Calculation</h1>
+            <h1>Phakic ICL Calculation</h1>
             <p>Enter maximum refraction and intraocular biometrics to estimate ICL size, vault, and lens power.</p>
           </div>
         </div>
@@ -140,8 +140,7 @@
           <img src="{{ url_for('static', filename='creator.jpg') }}" alt="VISION ID creator">
           <div>
             <strong>VISION ID</strong>
-            <span>ĐỨNG ĐẦU CÔNG NGHỆ - ĐỊNH HƯỚNG TƯƠNG LAI</span>
-            <small>Công cụ tính toán phẫu thuật khúc xạ được hỗ trợ bởi AI PRO</small>
+            <span>ĐI ĐẦU CÔNG NGHỆ - ĐỊNH HƯỚNG TƯƠNG LAI</span>
           </div>
         </div>
 
@@ -181,13 +180,14 @@
             </section>
           </div>
 
-          <label class="notes">Phakic IOL Notes
+          <label class="notes">Phakic ICL Notes
             <textarea name="notes" rows="4" placeholder="Sizing notes, predicted vault, safety warnings..."></textarea>
             <div id="phakicNotesAlert" class="phakic-notes-alert" aria-live="polite"></div>
           </label>
 
           <div class="actions">
             <button type="submit" class="primary-action">Save Phakic Plan</button>
+            <button type="button" id="printPhakic">Xuất PDF</button>
           </div>
         </form>
 
@@ -201,7 +201,7 @@
 
     </main>
 
-    <script src="{{ url_for('static', filename='app.js') }}?v=20260516-phakic-stella2"></script>
-    <script src="{{ url_for('static', filename='dongdo.js') }}?v=20260516-postopk-danger1"></script>
+    <script src="{{ url_for('static', filename='app.js') }}?v=20260516-print-phakic2"></script>
+    <script src="{{ url_for('static', filename='dongdo.js') }}?v=20260516-surgeon-blank1"></script>
   </body>
 </html>

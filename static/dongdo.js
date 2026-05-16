@@ -1,7 +1,6 @@
 const DONGDO_LOGO_URL = "/static/creator.jpg";
 const DONGDO_CREATOR_NAME = "VISION ID";
-const DONGDO_CREATOR_TAGLINE = "ĐỨNG ĐẦU CÔNG NGHỆ - ĐỊNH HƯỚNG TƯƠNG LAI";
-const DONGDO_CREATOR_SUBTITLE = "Công cụ tính toán phẫu thuật khúc xạ được hỗ trợ bởi AI PRO";
+const DONGDO_CREATOR_TAGLINE = "ĐI ĐẦU CÔNG NGHỆ - ĐỊNH HƯỚNG TƯƠNG LAI";
 const DONGDO_PROCEDURES = ["SMILE Pro", "CLEAR", "SmartSight", "Femto-LASIK", "Trans-PRK", "Presbyond", "PresbyMAX"];
 const DONGDO_NAVY = "#0a3d6b";
 const DONGDO_TEAL = "#2ab3b8";
@@ -74,8 +73,9 @@ function calcPTA(procedure, flapCap, ablation, cct) {
 
 function ptaLevel(pta, procedure = "") {
   if (pta === null || isNaN(pta)) return "unknown";
-  if (procedure === "Trans-PRK") return pta < 35 ? "safe" : pta <= 40 ? "caution" : "danger";
-  return pta < 38 ? "safe" : pta <= 40 ? "caution" : "danger";
+  // Chuẩn hóa ngưỡng cảnh báo cho cả OD/OS: PTA >= 40% luôn là nguy hiểm.
+  if (procedure === "Trans-PRK") return pta < 35 ? "safe" : pta < 40 ? "caution" : "danger";
+  return pta < 38 ? "safe" : pta < 40 ? "caution" : "danger";
 }
 
 function ptaLabel(pta, procedure = "") {
@@ -101,6 +101,19 @@ function calcSmileLenticuleFromMinimum(baseLenticule, minimumThickness) {
   return Math.round(baseLenticule + (minThickness - SMILE_MIN_THICKNESS_DEFAULT));
 }
 
+function isOdToOsSyncedKey(key) {
+  // Chỉ đồng bộ đúng các trường theo ghi chú UI: Procedure/OZ/Cap syncs to OS.
+  // Minimum Thickness phải độc lập theo từng mắt để Lenticule OD/OS không bị kéo nhầm.
+  return ["procedure", "oz", "flap_cap"].includes(key);
+}
+
+function syncOdFieldToOs(key, value) {
+  if (!isOdToOsSyncedKey(key)) return;
+  dongdoState.os[key] = value;
+  const synced = document.querySelector(`[data-dd-eye="os"][data-dd-key="${key}"]`);
+  if (synced && synced.value !== value) synced.value = value;
+}
+
 function hoaLevel(hoa) {
   if (isNaN(hoa) || hoa === null) return null;
   if (hoa < 0.39) return "normal";
@@ -121,7 +134,7 @@ function tbutAlert(tbut) {
   if (isNaN(tbut) || tbut === null || tbut === "") return null;
   const v = parseFloat(tbut);
   if (v < 5) return { level: "danger", text: "Severe Dry Eye: Temporary contraindication, treat ocular surface first (Khô mắt nặng)" };
-  if (v < 10) return { level: "warning", text: "Mild Dry Eye: Prefer SMILE Pro or SmartSight (Khô mắt nhẹ: Ưu tiên chọn SMILE Pro hoặc SmartSight)" };
+  if (v >= 5 && v <= 7) return { level: "warning", text: "Mild to Moderate Dry Eye: TBUT 5-7 sec (Cần tối ưu bề mặt nhãn cầu)" };
   return { level: "success", text: "✓ Normal tear film (Màng phim nước mắt bình thường)" };
 }
 
@@ -156,7 +169,7 @@ function calcEye(eye) {
     : ablation;
   const ptaTissueDepth = eye.procedure === "SMILE Pro" ? lenticuleZeissForum : ablation;
 
-  const rsb = !isNaN(thinnest) && !isNaN(cct) ? calcRSB(eye.procedure, cct, flapCap, ablation) : null;
+  const rsb = !isNaN(thinnest) && !isNaN(cct) ? calcRSB(eye.procedure, cct, flapCap, ptaTissueDepth) : null;
   const pta = !isNaN(cct) ? calcPTA(eye.procedure, flapCap, ptaTissueDepth, cct) : null;
   const nightRisk = !isNaN(mesopic) ? nightVisionRisk(mesopic, oz) : false;
 
@@ -204,7 +217,7 @@ const dongdoState = {
   activeTab: "planning",
   plans: loadLS(LS_PLANS, []),
   patient: { name: "", id: "", year: "", dominant: "OD" },
-  surgeon: "Dr. Phương Thủy",
+  surgeon: "",
   od: defaultEye(),
   os: defaultEye(),
   calcOD: null,
@@ -265,7 +278,7 @@ function eyeSafetyAlerts(eye, calc) {
   else if (cct !== null && cct < 500) alerts.push({ level: "warning", text: `CCT ${cct} um: cần thận trọng khi chọn procedure, flap/cap và OZ.` });
   if (eye.corvis_status === "caution") alerts.push({ level: "warning", text: "Corvis ST cảnh báo: cân nhắc Crosslinking hoặc giảm mức can thiệp mô." });
   if (eye.corvis_status === "danger") alerts.push({ level: "danger", text: "Corvis ST bất thường: cân nhắc dừng laser và chuyển hướng Phakic ICL." });
-  if (calc?.pta !== null && calc?.pta > 40) alerts.push({ level: "danger", text: `PTA ${calc.pta}% > 40%: Nguy cơ cao - Ectasia risk.` });
+  if (calc?.pta !== null && calc?.pta >= 40) alerts.push({ level: "danger", text: `PTA ${calc.pta}% ≥ 40%: Nguy cơ cao - Ectasia risk.` });
   if (calc?.rsb !== null && calc?.rsb < 300) alerts.push({ level: "danger", text: `RSB ${calc.rsb} um < 300 um: Nguy cơ cao - Ectasia risk.` });
   return alerts;
 }
@@ -360,7 +373,6 @@ function renderDongDo() {
       <div class="dd-creator-copy">
         <strong>${DONGDO_CREATOR_NAME}</strong>
         <span>${DONGDO_CREATOR_TAGLINE}</span>
-        <em>${DONGDO_CREATOR_SUBTITLE}</em>
       </div>
       <div class="dd-header-actions">
         ${dongdoState.activeTab === "planning" ? `
@@ -405,10 +417,10 @@ function renderDongDoPlanning() {
 function renderDongDoEye(eye, title, code, syncNote) {
   const data = dongdoState[eye];
   const calc = eye === "od" ? dongdoState.calcOD : dongdoState.calcOS;
-  const hoa = parseFloat(data.hoa_rms);
-  const tbut = parseFloat(data.tbut);
-  const hoaA = hoa ? hoaAlert(hoa) : null;
-  const tbutA = tbut ? tbutAlert(tbut) : null;
+  const hoa = numOrNull(data.hoa_rms);
+  const tbut = numOrNull(data.tbut);
+  const hoaA = hoa !== null ? hoaAlert(hoa) : null;
+  const tbutA = tbut !== null ? tbutAlert(tbut) : null;
   const highCyl = highCylAlert(data.cyl);
   return `
     <section class="dd-eye-card">
@@ -476,7 +488,7 @@ function ddGroup(title, body) {
 
 function renderPostK(calc) {
   if (!calc || (calc.postK1 === null && calc.postK2 === null)) return "";
-  const item = (label, value) => value === null ? "" : `<div class="dd-mini-metric"><span>${label}</span><strong class="${value < 34 ? "danger" : value < 35 ? "warning" : "success"}">${value} D</strong></div>`;
+  const item = (label, value) => value === null ? "" : `<div class="dd-mini-metric"><span>${label}</span><strong class="${value < 34 ? "danger" : "success"}">${value} D</strong></div>`;
   return `<div class="dd-mini-grid">${item("Predicted Post-op K1", calc.postK1)}${item("Predicted Post-op K2", calc.postK2)}</div>`;
 }
 
@@ -520,8 +532,11 @@ function renderOzOptimization(data, calc) {
     const ablation = calcAblationDepth(data.procedure, calc.finalLaserSph, calc.cyl, parseFloat(oz));
     const flapCap = data.flap_cap !== "" && !isNaN(parseFloat(data.flap_cap)) ? parseFloat(data.flap_cap) : defaultFlapCap(data.procedure);
     const cct = parseFloat(data.cct);
-    const rsb = !isNaN(cct) ? calcRSB(data.procedure, cct, flapCap, ablation) : null;
-    const pta = !isNaN(cct) ? calcPTA(data.procedure, flapCap, ablation, cct) : null;
+    const tissueDepth = data.procedure === "SMILE Pro"
+      ? calcSmileLenticuleFromMinimum(ablation, data.min_thickness)
+      : ablation;
+    const rsb = !isNaN(cct) ? calcRSB(data.procedure, cct, flapCap, tissueDepth) : null;
+    const pta = !isNaN(cct) ? calcPTA(data.procedure, flapCap, tissueDepth, cct) : null;
     return `<tr><td>${oz} mm</td><td>${ablation} um</td><td>${rsb ?? "—"} um</td><td>${pta ?? "—"}%</td></tr>`;
   }).join("");
   return `<div class="dd-oz"><strong>OZ Optimization</strong><table><thead><tr><th>OZ</th><th>Ablation</th><th>RSB</th><th>PTA</th></tr></thead><tbody>${rows}</tbody></table></div>`;
@@ -536,7 +551,7 @@ function renderDongDoPlan(plan) {
   const osPta = plan.calcOS?.pta;
   const odRsb = plan.calcOD?.rsb;
   const osRsb = plan.calcOS?.rsb;
-  const risk = (odPta !== null && odPta !== undefined && odPta > 40) || (osPta !== null && osPta !== undefined && osPta > 40) || (odRsb !== null && odRsb !== undefined && odRsb < 300) || (osRsb !== null && osRsb !== undefined && osRsb < 300);
+  const risk = (odPta !== null && odPta !== undefined && odPta >= 40) || (osPta !== null && osPta !== undefined && osPta >= 40) || (odRsb !== null && odRsb !== undefined && odRsb < 300) || (osRsb !== null && osRsb !== undefined && osRsb < 300);
   return `<article class="dd-row ${risk ? "dd-row-danger" : ""}"><div><strong>${escapeHtml(plan.patient.name)}</strong>${risk ? `<em>Nguy cơ cao - Ectasia risk</em>` : ""}<span>ID: ${escapeHtml(plan.patient.id)} · YOB: ${escapeHtml(plan.patient.year || "—")} · Saved: ${escapeHtml(plan.savedAt)}</span><span>OD PTA/RSB: ${odPta ?? "—"}% / ${odRsb ?? "—"} um · OS PTA/RSB: ${osPta ?? "—"}% / ${osRsb ?? "—"} um</span></div><button data-dd-load-plan="${plan.id}" tabindex="-1">Load</button><button data-dd-delete-plan="${plan.id}" class="dd-delete" tabindex="-1">Delete</button></article>`;
 }
 
@@ -619,6 +634,15 @@ function updateDongDoCornealWarningFields() {
     if (level === "normal") hoaInput.classList.add("dd-input-success");
     if (level === "warning") hoaInput.classList.add("dd-input-warning");
     if (level === "danger") hoaInput.classList.add("dd-input-danger");
+
+    const tbutInput = document.querySelector(`[data-dd-eye="${eye}"][data-dd-key="tbut"]`);
+    if (!tbutInput) return;
+    tbutInput.classList.remove("dd-input-success", "dd-input-warning", "dd-input-danger");
+    const tbut = parseFloat(data.tbut);
+    const tbutLevel = tbutAlert(tbut)?.level;
+    if (tbutLevel === "success") tbutInput.classList.add("dd-input-success");
+    if (tbutLevel === "warning") tbutInput.classList.add("dd-input-warning");
+    if (tbutLevel === "danger") tbutInput.classList.add("dd-input-danger");
   });
 }
 
@@ -659,148 +683,98 @@ function handleDongDoPrint() {
   recalcDongDo();
   const signed = (value, digits = 2) => {
     const n = parseFloat(value);
-    if (isNaN(n)) return "—";
+    if (isNaN(n)) return "&mdash;";
     return `${n >= 0 ? "+" : ""}${n.toFixed(digits)}`;
   };
-  const raw = (value, suffix = "") => value !== "" && value !== null && value !== undefined ? `${escapeHtml(value)}${suffix}` : "—";
-  const calcValue = (value, suffix = "") => value !== null && value !== undefined && !isNaN(value) ? `${value}${suffix}` : "—";
+  const raw = (value, suffix = "") => value !== "" && value !== null && value !== undefined ? `${escapeHtml(value)}${suffix}` : "&mdash;";
+  const calcValue = (value, suffix = "") => value !== null && value !== undefined && !isNaN(value) ? `${value}${suffix}` : "&mdash;";
   const corvitMeta = (status) => {
-    if (status === "danger") return { cls: "danger", label: "Danger", note: "Xem xét phương pháp Phakic ICL" };
-    if (status === "caution") return { cls: "warning", label: "Warning", note: "Cảnh báo, xem xét sử dụng thêm Crosslinking" };
-    return { cls: "success", label: "Normal", note: "Trong giới hạn bình thường" };
+    if (status === "danger") return { cls: "danger", label: "DANGER" };
+    if (status === "caution") return { cls: "warning", label: "WARNING" };
+    return { cls: "normal", label: "NORMAL" };
   };
-  const postKClass = (value) => value === null || value === undefined ? "" : value < 34 ? "danger-text" : value < 35 ? "warning-text" : "success-text";
-  const collectAlerts = (eye, calc) => {
-    const alerts = [];
-    const corvit = corvitMeta(eye.corvis_status);
-    if (eye.corvis_status !== "normal") alerts.push({ cls: corvit.cls, text: `Corvit ST ${corvit.label}: ${corvit.note}` });
-    const hoa = hoaAlert(parseFloat(eye.hoa_rms));
-    if (hoa && hoa.level !== "normal") alerts.push({ cls: hoa.level === "danger" ? "danger" : "warning", text: hoa.text });
-    const tbut = tbutAlert(parseFloat(eye.tbut));
-    if (tbut && tbut.level !== "success") alerts.push({ cls: tbut.level, text: tbut.text });
-    const highCyl = highCylAlert(eye.cyl);
-    if (highCyl) alerts.push({ cls: "purple", text: highCyl });
-    if (calc?.topoAlert) alerts.push({ cls: "danger", text: "Monitor Corneal Topography: CCT - Thinnest >= 15 um" });
-    if (calc?.nightRisk) alerts.push({ cls: "warning", text: "Night Vision Risk: Mesopic Pupil > OZ" });
-    if (calc?.rsb !== null && calc?.rsb < 300) alerts.push({ cls: "danger", text: `RSB nguy hiểm: ${calc.rsb} um - Ectasia risk` });
-    if (calc?.pta !== null) {
-      const tier = ptaLevel(calc.pta, eye.procedure);
-      if (tier === "caution") alerts.push({ cls: "warning", text: `PTA At Risk: ${calc.pta}% - cân nhắc Crosslinking` });
-      if (tier === "danger") alerts.push({ cls: "danger", text: `PTA High Risk: ${calc.pta}% - cân nhắc Phakic ICL` });
-    }
-    (calc?.vaAlerts || []).forEach((item) => alerts.push({ cls: "warning", text: item.msg }));
-    if (calc?.postK1 !== null && calc?.postK1 < 35) alerts.push({ cls: calc.postK1 < 34 ? "danger" : "warning", text: `Post-K1 thấp: ${calc.postK1} D` });
-    if (calc?.postK2 !== null && calc?.postK2 < 35) alerts.push({ cls: calc.postK2 < 34 ? "danger" : "warning", text: `Post-K2 thấp: ${calc.postK2} D` });
-    return alerts;
+  const normalizeProcedure = (value) => raw(String(value || "").replace(/\bIOL\b/g, "ICL"));
+  const iclSize = (eye) => raw(eye.icl_size || eye.recommended_size || eye.ocos_size || eye.lens_size);
+  const vault = (eye) => raw(eye.predicted_vault_um || eye.predicted_vault || eye.vault, eye.predicted_vault_um ? " um" : "");
+  const metricRow = (label, odValue, osValue) => `<tr><th>${label}</th><td>${odValue}</td><td>${osValue}</td></tr>`;
+  const planningRows = (label, key, suffix = "") => metricRow(label, raw(dongdoState.od[key], suffix), raw(dongdoState.os[key], suffix));
+  const statusCell = (eye) => {
+    const status = corvitMeta(eye.corvis_status);
+    return `<span class="badge ${status.cls}">${status.label}</span>`;
   };
-  const row = (label, value, cls = "") => `<tr><td>${label}</td><td class="${cls}">${value}</td></tr>`;
-  const section = (label) => `<tr><th colspan="2">${label}</th></tr>`;
-  const resultBadge = (label, value, cls = "") => `<div class="result ${cls}"><span>${label}</span><strong>${value}</strong></div>`;
-  const eyeReport = (label, eye, calc) => {
-    const corvit = corvitMeta(eye.corvis_status);
-    const tier = calc?.pta !== null && calc?.pta !== undefined ? ptaLevel(calc.pta, eye.procedure) : "";
-    const alerts = collectAlerts(eye, calc);
-    return `<section class="print-eye">
-      <h2>${label}</h2>
-      <div class="result-grid">
-        ${resultBadge("Input Sphere", calc ? `${signed(calc.finalLaserSph)} D` : "—", "primary")}
-        ${resultBadge("Ablation", calcValue(eye.procedure === "SMILE Pro" ? calc?.lenticuleZeissForum : calc?.ablation, " um"), "primary")}
-        ${resultBadge("RSB", calcValue(calc?.rsb, " um"), calc?.rsb !== null && calc?.rsb < 300 ? "danger" : "success")}
-        ${resultBadge("PTA", calcValue(calc?.pta, "%"), tier === "danger" ? "danger" : tier === "caution" ? "warning" : "success")}
-      </div>
-      <table>
-        ${section("1. Corneal Biometrics")}
-        ${row("Thinnest / CCT", `${raw(eye.thinnest_point, " um")} / ${raw(eye.cct, " um")}`)}
-        ${row("Mesopic Pupil", raw(eye.pupil_mesopic, " mm"))}
-        ${row("K1 / K2", `${raw(eye.k1, " D")} / ${raw(eye.k2, " D")}`)}
-        ${row("WTW / HOA RMS / TBUT", `${raw(eye.wtw, " mm")} / ${raw(eye.hoa_rms, " um")} / ${raw(eye.tbut, " sec")}`)}
-        ${row("Corvit ST", `<b>${corvit.label}</b><br><small>${corvit.note}</small>`, corvit.cls)}
-        ${section("2. Manifest Refraction")}
-        ${row("Sphere / Cylinder", `${raw(eye.mf_sph, " D")} / ${raw(eye.mf_cyl, " D")}`)}
-        ${row("Axis / BCVA", `${raw(eye.mf_axis, "°")} / ${raw(eye.mf_bcva)}`)}
-        ${section("3. Treatment Plan")}
-        ${row("Sphere / Cylinder", `${raw(eye.sph, " D")} / ${raw(eye.cyl, " D")}`)}
-        ${row("Axis / Target", `${raw(eye.axis, "°")} / ${raw(eye.target_sph, " D")}`)}
-        ${section("4. Surgical Plan")}
-        ${row("Procedure", raw(eye.procedure))}
-        ${row("Cap/Flap / OZ / Incision", `${raw(eye.flap_cap || defaultFlapCap(eye.procedure), " um")} / ${raw(eye.oz, " mm")} / ${raw(eye.incision, " mm")}`)}
-        ${section("Calculation Results")}
-        ${row("Input Sphere / Cylinder", `${calc ? signed(calc.finalLaserSph) : "—"} / ${calc ? signed(calc.cyl) : "—"} D`)}
-        ${row("Total Diopters", calcValue(calc?.totalD?.toFixed ? calc.totalD.toFixed(2) : calc?.totalD, " D"))}
-        ${row("Ablation / Lenticule", calcValue(eye.procedure === "SMILE Pro" ? calc?.lenticuleZeissForum : calc?.ablation, " um"), "primary")}
-        ${row("RSB", calcValue(calc?.rsb, " um"), calc?.rsb !== null && calc?.rsb < 300 ? "danger" : "success")}
-        ${row("PTA", calcValue(calc?.pta, "%"), tier === "danger" ? "danger" : tier === "caution" ? "warning" : "success")}
-        ${row("Post-op K1 / K2", `<span class="${postKClass(calc?.postK1)}">${calcValue(calc?.postK1, " D")}</span> / <span class="${postKClass(calc?.postK2)}">${calcValue(calc?.postK2, " D")}</span>`)}
-        ${row("Predicted VA", raw(calc?.predictedVA))}
-      </table>
-      <div class="alerts">
-        <strong>Warnings & Clinical Notes</strong>
-        ${alerts.length ? alerts.map((item) => `<div class="alert ${item.cls}">${escapeHtml(item.text)}</div>`).join("") : `<div class="alert success">Không có cảnh báo nổi bật.</div>`}
-      </div>
-    </section>`;
-  };
-  const highRisk = [collectAlerts(dongdoState.od, dongdoState.calcOD), collectAlerts(dongdoState.os, dongdoState.calcOS)]
-    .flat()
-    .some((item) => item.cls === "danger");
+  const printedAt = new Date().toLocaleString("en-GB");
   const reportHtml = `<!doctype html><html><head><meta charset="UTF-8"><title>Surgical Plan Report - ${escapeHtml(dongdoState.patient.name || "Patient")}</title><style>
-    @page{size:A4 landscape;margin:7mm}
+    @page{size:A4;margin:12mm 10mm}
     *{box-sizing:border-box}
-    body{margin:0;background:#fff;color:#111827;font-family:Arial,Helvetica,sans-serif;font-size:10.5px;line-height:1.25}
-    .page{width:100%;min-height:100vh;padding:0}
-    .head{display:grid;grid-template-columns:52px 1fr auto;gap:10px;align-items:center;border-bottom:2px solid ${DONGDO_TEAL};padding-bottom:7px;margin-bottom:8px}
-    .head img{width:50px;height:50px;border-radius:50%;object-fit:cover;border:2px solid #dbeafe}
-    h1{margin:0;color:${DONGDO_NAVY};font-size:17px;line-height:1.1}
-    .head p{margin:2px 0 0;color:#64748b;font-size:10px}
-    .doc-title{text-align:right;color:${DONGDO_NAVY};font-weight:800;font-size:13px}
-    .patient{display:grid;grid-template-columns:2fr 1fr 1fr .9fr 1.4fr 1.2fr;gap:6px;background:#f0f8ff;border:1px solid #c5d9f0;border-radius:6px;padding:7px 9px;margin-bottom:8px}
-    .pf label{display:block;color:#64748b;text-transform:uppercase;font-size:8px;font-weight:700}
-    .pf span{display:block;color:#0f172a;font-weight:800;font-size:10.5px;margin-top:2px}
-    .global-risk{margin-bottom:8px;padding:6px 9px;border-radius:6px;border:1.5px solid #fca5a5;background:#fef2f2;color:#991b1b;font-weight:800}
-    .dual{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:start}
-    .print-eye{border:1.4px solid ${DONGDO_NAVY};border-radius:7px;overflow:hidden;break-inside:avoid}
-    .print-eye h2{margin:0;background:${DONGDO_NAVY};color:#fff;padding:6px 8px;font-size:12px}
-    .result-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:7px;background:#f8fafc;border-bottom:1px solid #dbe3ec}
-    .result{border:1px solid #cbd5e1;border-radius:5px;background:#fff;padding:5px}
-    .result span{display:block;color:#64748b;font-size:8px;font-weight:700;text-transform:uppercase}
-    .result strong{display:block;margin-top:2px;font-size:12px;color:#0f172a}
-    .result.primary{border-color:#93c5fd;background:#eff6ff}.result.primary strong{color:${DONGDO_NAVY}}
-    .result.success{border-color:#86efac;background:#f0fdf4}.result.success strong{color:#15803d}
-    .result.warning{border-color:#fcd34d;background:#fffbeb}.result.warning strong{color:#b45309}
-    .result.danger{border-color:#fca5a5;background:#fef2f2}.result.danger strong{color:#b91c1c}
-    table{width:100%;border-collapse:collapse}
-    th{background:#e8f1fc;color:${DONGDO_NAVY};text-align:left;padding:4px 7px;font-size:8.5px;text-transform:uppercase;letter-spacing:.2px}
-    td{border-bottom:1px solid #e5e7eb;padding:3.7px 7px;vertical-align:top}
-    td:first-child{width:44%;color:#475569}
-    td:last-child{text-align:right;font-weight:700}
-    td.primary{color:${DONGDO_NAVY}}td.success{color:#15803d}td.warning{color:#b45309}td.danger{color:#b91c1c}
-    .success-text{color:#15803d}.warning-text{color:#b45309}.danger-text{color:#b91c1c}
-    small{font-weight:600;color:inherit}
-    .alerts{padding:6px 7px;background:#fff}
-    .alerts>strong{display:block;color:${DONGDO_NAVY};font-size:9px;text-transform:uppercase;margin-bottom:4px}
-    .alert{border:1px solid #dbe3ec;border-radius:5px;padding:4px 6px;margin-top:3px;font-size:9.5px;font-weight:700}
-    .alert.success{background:#f0fdf4;border-color:#86efac;color:#15803d}
-    .alert.warning{background:#fffbeb;border-color:#fcd34d;color:#92400e}
-    .alert.danger{background:#fef2f2;border-color:#fca5a5;color:#991b1b}
-    .alert.purple{background:#faf5ff;border-color:#d8b4fe;color:#6b21a8}
-    .footer{display:flex;justify-content:space-between;gap:10px;margin-top:6px;padding-top:5px;border-top:1px solid #e5e7eb;color:#64748b;font-size:8.5px}
-    @media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}.page{page-break-after:avoid}}
+    html,body{margin:0;background:#fff;color:#111827;font-family:Inter,Arial,"Segoe UI",Roboto,sans-serif;font-size:9.5px;line-height:1.18}
+    .page{width:190mm;max-height:273mm;overflow:hidden}
+    .table{display:table;width:100%;border-collapse:collapse;table-layout:fixed}
+    .cell{display:table-cell;vertical-align:middle}
+    .head{border-bottom:2px solid ${DONGDO_TEAL};padding-bottom:5px;margin-bottom:5px}
+    .head-logo{width:18mm}.head-logo img{width:14mm;height:14mm;border-radius:50%;object-fit:cover;border:1px solid #dbeafe}
+    h1{margin:0;color:${DONGDO_NAVY};font-size:18px;line-height:1}
+    .tagline{margin-top:2px;color:#475569;font-size:9.5px;font-weight:800}
+    .doc-title{text-align:right;color:${DONGDO_NAVY};font-weight:900;font-size:11px;line-height:1.15}
+    .patient{margin:5px 0;border:1px solid #c5d9f0;background:#f0f8ff}
+    .pf{display:table-cell;padding:4px 5px;border-right:1px solid #d6e6f7;vertical-align:top}
+    .pf:last-child{border-right:0}.pf label{display:block;color:#64748b;text-transform:uppercase;font-size:7.2px;font-weight:800}.pf span{display:block;margin-top:1px;color:#0f172a;font-size:9.5px;font-weight:800}
+    .section-title{margin:6px 0 3px;padding:3px 6px;background:${DONGDO_NAVY};color:#fff;font-size:9px;font-weight:900;text-transform:uppercase}
+    .report-table{width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:4px}
+    .report-table th,.report-table td{border:1px solid #dbe3ec;padding:3px 5px;vertical-align:middle}
+    .report-table thead th{background:#e8f1fc;color:${DONGDO_NAVY};font-size:8.5px;text-align:center;text-transform:uppercase}
+    .report-table tbody th{width:34%;background:#f8fafc;color:#475569;text-align:left;font-weight:800}
+    .report-table td{text-align:center;font-weight:800}
+    .badge{display:inline-block;min-width:58px;border-radius:999px;padding:2px 7px;font-size:8px;font-weight:900;text-align:center}
+    .badge.normal{background:#dcfce7;color:#166534;border:1px solid #86efac}
+    .badge.warning{background:#fef3c7;color:#92400e;border:1px solid #fcd34d}
+    .badge.danger{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5}
+    .signature{display:table;width:100%;table-layout:fixed;margin-top:8px;border-top:1px solid #dbe3ec}
+    .sig{display:table-cell;width:50%;padding-top:5px;text-align:center;color:#111827;font-weight:900}
+    .sig-line{height:16mm}.sig span{display:block;color:#64748b;font-size:8px;font-weight:700;margin-top:2px}
+    @media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}.page{page-break-after:avoid;break-after:avoid}}
   </style></head><body><div class="page">
-    <div class="head">
-      <img src="${DONGDO_LOGO_URL}" alt="Ảnh người sáng tạo">
-      <div><h1>${DONGDO_CREATOR_NAME}</h1><p>${DONGDO_CREATOR_TAGLINE}</p><p>${DONGDO_CREATOR_SUBTITLE}</p></div>
-      <div class="doc-title">SURGICAL PLAN<br>REPORT<br><span style="font-size:9px;color:#64748b">${new Date().toLocaleDateString("en-GB")}</span></div>
+    <div class="head table">
+      <div class="cell head-logo"><img src="${DONGDO_LOGO_URL}" alt="VISION ID"></div>
+      <div class="cell"><h1>${DONGDO_CREATOR_NAME}</h1><div class="tagline">ĐI ĐẦU CÔNG NGHỆ - ĐỊNH HƯỚNG TƯƠNG LAI</div></div>
+      <div class="cell doc-title">SURGICAL PLAN REPORT<br><span>${printedAt}</span></div>
     </div>
-    <div class="patient">
-      <div class="pf"><label>Patient Name</label><span>${escapeHtml(dongdoState.patient.name || "—")}</span></div>
-      <div class="pf"><label>Patient ID</label><span>${escapeHtml(dongdoState.patient.id || "—")}</span></div>
-      <div class="pf"><label>Year of Birth</label><span>${escapeHtml(dongdoState.patient.year || "—")}</span></div>
+    <div class="patient table">
+      <div class="pf"><label>Patient Name</label><span>${raw(dongdoState.patient.name)}</span></div>
+      <div class="pf"><label>Patient ID</label><span>${raw(dongdoState.patient.id)}</span></div>
+      <div class="pf"><label>Year of Birth</label><span>${raw(dongdoState.patient.year)}</span></div>
       <div class="pf"><label>Dominant</label><span>${escapeHtml(dongdoState.patient.dominant || "OD")}</span></div>
       <div class="pf"><label>Surgeon</label><span>${escapeHtml(dongdoState.surgeon)}</span></div>
-      <div class="pf"><label>Printed</label><span>${new Date().toLocaleString("en-GB")}</span></div>
     </div>
-    ${highRisk ? `<div class="global-risk">High-risk warning detected. Review highlighted PTA/RSB/Corvit ST alerts before surgery.</div>` : ""}
-    <div class="dual">${eyeReport("Right Eye (OD)", dongdoState.od, dongdoState.calcOD)}${eyeReport("Left Eye (OS)", dongdoState.os, dongdoState.calcOS)}</div>
-    <div class="footer"><span>${DONGDO_CREATOR_NAME} - VISION ID</span><span>OD shown on left, OS shown on right. Calculations generated from current input values.</span></div>
+    <div class="section-title">1. Corneal Biometrics</div>
+    <table class="report-table"><thead><tr><th>Parameter</th><th>OD</th><th>OS</th></tr></thead><tbody>
+      ${planningRows("CCT", "cct", " um")}
+      ${planningRows("Thinnest Point", "thinnest_point", " um")}
+      ${planningRows("K1", "k1", " D")}
+      ${planningRows("K2", "k2", " D")}
+      ${planningRows("HOA RMS", "hoa_rms", " um")}
+      ${planningRows("WTW", "wtw", " mm")}
+      ${planningRows("ACD", "acd", " mm")}
+    </tbody></table>
+    <div class="section-title">2. Cảnh báo an toàn (Corvis ST)</div>
+    <table class="report-table"><thead><tr><th>Assessment</th><th>OD</th><th>OS</th></tr></thead><tbody>
+      ${metricRow("Corvis ST", statusCell(dongdoState.od), statusCell(dongdoState.os))}
+      ${metricRow("RSB", calcValue(dongdoState.calcOD?.rsb, " um"), calcValue(dongdoState.calcOS?.rsb, " um"))}
+      ${metricRow("PTA", calcValue(dongdoState.calcOD?.pta, "%"), calcValue(dongdoState.calcOS?.pta, "%"))}
+    </tbody></table>
+    <div class="section-title">3. Surgical Planning</div>
+    <table class="report-table"><thead><tr><th>Parameter</th><th>OD</th><th>OS</th></tr></thead><tbody>
+      ${planningRows("Sphere", "mf_sph", " D")}
+      ${planningRows("Cylinder", "mf_cyl", " D")}
+      ${planningRows("Axis", "mf_axis", "&deg;")}
+      ${metricRow("Recommended Method", normalizeProcedure(dongdoState.od.procedure || "Phakic ICL"), normalizeProcedure(dongdoState.os.procedure || "Phakic ICL"))}
+      ${metricRow("ICL Size", iclSize(dongdoState.od), iclSize(dongdoState.os))}
+      ${metricRow("Predicted Vault", vault(dongdoState.od), vault(dongdoState.os))}
+      ${metricRow("Post-op K1 / K2", `${calcValue(dongdoState.calcOD?.postK1, " D")} / ${calcValue(dongdoState.calcOD?.postK2, " D")}`, `${calcValue(dongdoState.calcOS?.postK1, " D")} / ${calcValue(dongdoState.calcOS?.postK2, " D")}`)}
+    </tbody></table>
+    <div class="signature">
+      <div class="sig"><div class="sig-line"></div>Patient Signature<span>Bệnh nhân</span></div>
+      <div class="sig"><div class="sig-line"></div>Surgeon Signature<span>Bác sĩ phẫu thuật</span></div>
+    </div>
   </div></body></html>`;
   printReportHtml(reportHtml);
 }
@@ -910,9 +884,9 @@ function attachDongDoEvents() {
       const value = key === "min_thickness" ? String(clampSmileMinimumThickness(event.target.value)) : event.target.value;
       dongdoState[eye][key] = value;
       if (key === "min_thickness" && event.target.value !== value) event.target.value = value;
-      if (eye === "od" && ["procedure", "oz", "flap_cap", "incision", "min_thickness"].includes(key)) dongdoState.os[key] = value;
+      if (eye === "od") syncOdFieldToOs(key, value);
       updateDongDoSmileFields();
-      if (key === "min_thickness") refreshDongDoResults();
+      if (key === "min_thickness" || isOdToOsSyncedKey(key)) refreshDongDoResults();
       else scheduleDongDoRefresh();
     }
   });
@@ -929,13 +903,9 @@ function attachDongDoEvents() {
       const value = key === "min_thickness" ? String(clampSmileMinimumThickness(event.target.value)) : event.target.value;
       dongdoState[eye][key] = value;
       if (key === "min_thickness" && event.target.value !== value) event.target.value = value;
-      if (eye === "od" && ["procedure", "oz", "flap_cap", "incision", "min_thickness"].includes(key)) {
-        dongdoState.os[key] = value;
-        const synced = document.querySelector(`[data-dd-eye="os"][data-dd-key="${key}"]`);
-        if (synced) synced.value = value;
-      }
+      if (eye === "od") syncOdFieldToOs(key, value);
       updateDongDoSmileFields();
-      if (key === "min_thickness") refreshDongDoResults();
+      if (key === "min_thickness" || isOdToOsSyncedKey(key)) refreshDongDoResults();
       else scheduleDongDoRefresh();
     }
   });
@@ -948,7 +918,7 @@ function attachDongDoEvents() {
     if (tab) { dongdoState.activeTab = tab.dataset.ddTab; renderDongDo(); }
     if (action?.dataset.ddAction === "save-sync") handleDongDoSave();
     if (action?.dataset.ddAction === "to-planning") handleSendToPlanning();
-    if (action?.dataset.ddAction === "print") handleDongDoPrint();
+    if (action?.dataset.ddAction === "print") window.print();
     if (action?.dataset.ddAction === "sheets") alert("Google Sheets URL có thể lưu ở localStorage key visionid_sheets_url. Bản hiện tại đã giữ cấu trúc để mở rộng sync.");
     if (corvis) {
       const [eye, status] = corvis.dataset.ddCorvis.split(":");
