@@ -35,6 +35,7 @@ const PRESBYOND_TARGET_DEFAULT = -1.5;
 const PRESBYOND_TARGET_MIN = -2.5;
 const PRESBYOND_TARGET_MAX = 0;
 const PRESBYOND_FLAP_DEFAULT = 120;
+const OZ_BASE_MICRONS_PER_DIOPTER = 14;
 
 const loadLS = (key, def) => { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; } catch { return def; } };
 const saveLS = (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} };
@@ -74,9 +75,15 @@ function defaultFlapCap(procedure) {
   return 120;
 }
 
+function ozAblationFactor(oz) {
+  if (String(oz) === "6.8") return 1.087;
+  if (String(oz) === "6.2") return 1 / 1.081;
+  return 1.0;
+}
+
 function calcAblationDepth(procedure, finalLaserSph, cyl, oz) {
   const totalD = Math.abs(finalLaserSph) + Math.abs(cyl);
-  const factor = String(oz) === "6.8" ? 1.087 : String(oz) === "6.2" ? 1 / 1.081 : 1;
+  const factor = ozAblationFactor(oz);
 
   if (isTransPrkProcedure(procedure)) {
     // Bảng SmartSurface/Trans-PRK gốc là Total Ablation đã gồm 55 um biểu mô.
@@ -127,7 +134,7 @@ function calculateTransPrkAblation(totalDiopters, epithelialThickness, oz = "6.5
     };
   }
 
-  const factor = String(oz) === "6.8" ? 1.087 : String(oz) === "6.2" ? 1 / 1.081 : 1;
+  const factor = ozAblationFactor(oz);
   const stromalAblation = Math.round(interpolateAblationTable(TRANS_PRK_STROMAL_ABLATION_TABLE, totalD) * factor);
   const epiThickness = clampTransPrkEpithelialThickness(epithelialThickness);
   return {
@@ -149,14 +156,14 @@ function calculatePresbyondAblation(sphere, cylinder, target, oz = "6.5") {
   const sphereAltered = (parseFloat(sphere) || 0) - clampPresbyondTarget(target);
   const cylinderAltered = parseFloat(cylinder) || 0;
   const totalTreatment = Math.abs(sphereAltered) + Math.abs(cylinderAltered);
-  const ozValue = parseFloat(oz) || 6.5;
-  const munnerlynMap = {"6": 12, "6.0": 12, "6.5": 14, "7": 16.3, "7.0": 16.3};
-  const micronsPerDiopter = munnerlynMap[String(oz)] ?? munnerlynMap[String(ozValue)] ?? ((ozValue ** 2) / 3);
+  const ozFactor = ozAblationFactor(oz);
+  const micronsPerDiopter = OZ_BASE_MICRONS_PER_DIOPTER * ozFactor;
   const ablation = Math.round(totalTreatment * micronsPerDiopter);
   return {
     sphereAltered,
     cylinderAltered,
     totalTreatment,
+    ozFactor,
     micronsPerDiopter,
     ablation,
   };
@@ -639,7 +646,7 @@ function renderPresbyondDynamicFields(eye, data, calc) {
       <label>Flap Thickness (um)
         <input data-dd-eye="${eye}" data-dd-key="flap_cap" type="number" step="1" value="${escapeHtml(flap)}">
       </label>
-      <small>Total Treatment: ${plan ? `${plan.totalTreatment.toFixed(2)} D` : "—"} · Munnerlyn: ${plan ? `${plan.micronsPerDiopter.toFixed(1)} um/D` : "—"}</small>
+      <small>Total Treatment: ${plan ? `${plan.totalTreatment.toFixed(2)} D` : "—"} · OZ factor: ${plan ? `${plan.ozFactor.toFixed(3)} × 14 um/D` : "—"}</small>
     </div>
   `;
 }
@@ -749,7 +756,7 @@ function renderDongDoEye(eye, title, code, syncNote) {
         ${ddGroup("4. Surgical Plan", `<div class="dd-grid cols-4">
           ${ddSelect("Procedure", "procedure", eye, DONGDO_PROCEDURES)}
           ${ddField("Cap/Flap (um)", "flap_cap", eye, `type="number" placeholder="${defaultFlapCap(data.procedure)}"`)}
-          ${ddSelect("Optical Zone (OZ)", "oz", eye, ["6.0", "6.2", "6.5", "6.8", "7.0"])}
+          ${ddSelect("Optical Zone (OZ)", "oz", eye, ["6.2", "6.5", "6.8"])}
           ${ddField("Incision (mm)", "incision", eye, 'type="number" step="0.1" placeholder="2.0"')}
         </div>`)}
         ${renderSmileProDynamicFields(eye, data, calc)}
@@ -788,7 +795,7 @@ function renderDongDoResults(calc, data) {
   const isPresbyond = isPresbyondProcedure(data.procedure);
   const tissueLabel = isSmile || data.procedure === "CLEAR"
     ? "Lenticule (Zeiss Forum)"
-    : isTransPrk ? "Total Ablation (Stromal + Epithelium)" : isPresbyond ? "Ablation (Munnerlyn)" : "Ablation";
+    : isTransPrk ? "Total Ablation (Stromal + Epithelium)" : isPresbyond ? "Ablation (OZ Factor)" : "Ablation";
   const tissueValue = isSmile ? calc.lenticuleZeissForum : calc.ablation;
   const rsbLimit = isTransPrk ? 350 : 300;
   const transPrkInvalid = isTransPrk && calc.transPrkValidation?.isValid === false;
