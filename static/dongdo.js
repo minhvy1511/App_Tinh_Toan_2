@@ -9,6 +9,18 @@ const LS_SHEETS_URL = "visionid_sheets_url";
 const SMILE_MIN_THICKNESS_DEFAULT = 15;
 const SMILE_MIN_THICKNESS_MIN = 10;
 const SMILE_MIN_THICKNESS_MAX = 35;
+const TRANS_PRK_EPITHELIAL_DEFAULT = 55;
+const TRANS_PRK_EPITHELIAL_MIN = 40;
+const TRANS_PRK_EPITHELIAL_MAX = 70;
+const TRANS_PRK_MAX_SAFE_DIOPTERS = 7.0;
+const TRANS_PRK_TOTAL_TABLE_INCLUDES_EPI = 55;
+const TRANS_PRK_TOTAL_ABLATION_TABLE = {1:71, 2:86, 3:100, 4:115, 5:130, 6:145, 7:159, 8:174};
+const TRANS_PRK_STROMAL_ABLATION_TABLE = Object.fromEntries(
+  Object.entries(TRANS_PRK_TOTAL_ABLATION_TABLE).map(([diopter, totalAblation]) => [
+    Number(diopter),
+    totalAblation - TRANS_PRK_TOTAL_TABLE_INCLUDES_EPI,
+  ])
+);
 
 const loadLS = (key, def) => { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; } catch { return def; } };
 const saveLS = (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} };
@@ -30,51 +42,98 @@ const defaultEye = () => ({
   mf_sph: "", mf_cyl: "", mf_axis: "", mf_bcva: "",
   cy_sph: "", cy_cyl: "", cy_axis: "", cy_bcva: "",
   sph: "", cyl: "", axis: "", target_sph: "0", target_cyl: "0",
-  procedure: "SmartSight", flap_cap: "", oz: "6.5", incision: "2.0", tz: "", min_thickness: String(SMILE_MIN_THICKNESS_DEFAULT),
+  procedure: "SmartSight", flap_cap: "", oz: "6.5", incision: "2.0", tz: "", min_thickness: String(SMILE_MIN_THICKNESS_DEFAULT), epithelial_thickness: String(TRANS_PRK_EPITHELIAL_DEFAULT),
 });
 
+function isTransPrkProcedure(procedure) {
+  return procedure === "TransPRK" || procedure === "Trans-PRK";
+}
+
 function defaultFlapCap(procedure) {
-  if (procedure === "Trans-PRK") return 0;
+  if (isTransPrkProcedure(procedure)) return 0;
   if (procedure === "Femto-LASIK" || procedure === "Presbyond" || procedure === "PresbyMAX") return 110;
   return 120;
 }
 
 function calcAblationDepth(procedure, finalLaserSph, cyl, oz) {
   const totalD = Math.abs(finalLaserSph) + Math.abs(cyl);
+  const factor = String(oz) === "6.8" ? 1.087 : String(oz) === "6.2" ? 1 / 1.081 : 1;
+
+  if (isTransPrkProcedure(procedure)) {
+    // Bảng SmartSurface/Trans-PRK gốc là Total Ablation đã gồm 55 um biểu mô.
+    // Vì UI cho phép nhập Epithelial Thickness riêng, ở đây chỉ trả về phần nhu mô thuần.
+    return Math.round(interpolateAblationTable(TRANS_PRK_STROMAL_ABLATION_TABLE, totalD) * factor);
+  }
+
+  const tableKey = isTransPrkProcedure(procedure) ? "TransPRK" : procedure;
   const tables = {
     "SMILE Pro": {1:39, 2:55, 3:75, 4:84, 5:99, 6:112, 7:126, 8:139, 9:152, 10:167, 11:180},
     "CLEAR": {1:39, 2:55, 3:75, 4:84, 5:99, 6:112, 7:126, 8:139, 9:152, 10:167, 11:180},
     "SmartSight": {1:26, 2:50, 3:63, 4:76, 5:89, 6:101, 7:113, 8:125, 9:137, 10:148, 11:159, 12:170},
     "Femto-LASIK": {1:16, 2:32, 3:48, 4:63, 5:79, 6:94, 7:109, 8:124, 9:139, 10:154, 11:166, 12:178},
-    "Trans-PRK": {1:71, 2:86, 3:100, 4:115, 5:130, 6:145, 7:159, 8:174},
     "Presbyond": {1:16, 2:32, 3:48, 4:63, 5:79, 6:94, 7:109, 8:124, 9:139, 10:154, 11:166, 12:178},
     "PresbyMAX": {1:71, 2:86, 3:100, 4:115, 5:130, 6:145, 7:159, 8:174},
   };
-  const table = tables[procedure] || tables.SmartSight;
-  if (totalD <= 0) return 0;
-  const lo = Math.floor(totalD);
-  const hi = lo + 1;
-  const vLo = table[lo] || 0;
-  const vHi = table[hi] ?? table[lo] ?? 0;
-  const base = vLo + (vHi - vLo) * (totalD - lo);
-  const factor = String(oz) === "6.8" ? 1.087 : String(oz) === "6.2" ? 1 / 1.081 : 1;
+  const table = tables[tableKey] || tables.SmartSight;
+  const base = interpolateAblationTable(table, totalD);
   return Math.round(base * factor);
 }
 
+function interpolateAblationTable(table, totalDiopters) {
+  const totalD = Math.abs(parseFloat(totalDiopters) || 0);
+  if (totalD <= 0) return 0;
+  const keys = Object.keys(table).map(Number).sort((a, b) => a - b);
+  const minKey = keys[0];
+  const maxKey = keys[keys.length - 1];
+  if (totalD <= minKey) return table[minKey] * (totalD / minKey);
+  if (totalD >= maxKey) return table[maxKey];
+
+  const lo = Math.floor(totalD);
+  const hi = Math.ceil(totalD);
+  if (lo === hi) return table[lo];
+  const vLo = table[lo];
+  const vHi = table[hi];
+  return vLo + (vHi - vLo) * (totalD - lo);
+}
+
+function calculateTransPrkAblation(totalDiopters, epithelialThickness, oz = "6.5") {
+  const totalD = Math.abs(parseFloat(totalDiopters) || 0);
+  if (totalD > TRANS_PRK_MAX_SAFE_DIOPTERS) {
+    return {
+      isValid: false,
+      totalDiopters: parseFloat(totalD.toFixed(2)),
+      stromalAblation: null,
+      totalAblation: null,
+      warning: `Cảnh báo: Tổng dải độ điều trị (${totalD.toFixed(2)} Diop) vượt quá giới hạn an toàn của Trans-PRK là 7.00 Diop. Nguy cơ sẹo giác mạc (Haze) rất cao. Vui lòng chọn phương pháp khác (Femto-LASIK / Phakic).`,
+    };
+  }
+
+  const factor = String(oz) === "6.8" ? 1.087 : String(oz) === "6.2" ? 1 / 1.081 : 1;
+  const stromalAblation = Math.round(interpolateAblationTable(TRANS_PRK_STROMAL_ABLATION_TABLE, totalD) * factor);
+  const epiThickness = clampTransPrkEpithelialThickness(epithelialThickness);
+  return {
+    isValid: true,
+    totalDiopters: parseFloat(totalD.toFixed(2)),
+    stromalAblation,
+    totalAblation: Math.round(stromalAblation + epiThickness),
+    warning: null,
+  };
+}
+
 function calcRSB(procedure, cct, flapCap, ablation) {
-  const effectiveFlap = procedure === "Trans-PRK" ? 0 : flapCap;
+  const effectiveFlap = isTransPrkProcedure(procedure) ? 0 : flapCap;
   return Math.round(cct - effectiveFlap - ablation);
 }
 
 function calcPTA(procedure, flapCap, ablation, cct) {
-  const effectiveFlap = procedure === "Trans-PRK" ? 0 : flapCap;
+  const effectiveFlap = isTransPrkProcedure(procedure) ? 0 : flapCap;
   return cct > 0 ? parseFloat((((effectiveFlap + ablation) / cct) * 100).toFixed(1)) : null;
 }
 
 function ptaLevel(pta, procedure = "") {
   if (pta === null || isNaN(pta)) return "unknown";
   // Chuẩn hóa ngưỡng cảnh báo cho cả OD/OS: PTA >= 40% luôn là nguy hiểm.
-  if (procedure === "Trans-PRK") return pta < 35 ? "safe" : pta < 40 ? "caution" : "danger";
+  if (isTransPrkProcedure(procedure)) return pta < 35 ? "safe" : pta < 40 ? "caution" : "danger";
   return pta < 38 ? "safe" : pta < 40 ? "caution" : "danger";
 }
 
@@ -96,6 +155,12 @@ function clampSmileMinimumThickness(value) {
   return Math.min(SMILE_MIN_THICKNESS_MAX, Math.max(SMILE_MIN_THICKNESS_MIN, parsed));
 }
 
+function clampTransPrkEpithelialThickness(value) {
+  const parsed = parseFloat(value);
+  if (!Number.isFinite(parsed)) return TRANS_PRK_EPITHELIAL_DEFAULT;
+  return Math.min(TRANS_PRK_EPITHELIAL_MAX, Math.max(TRANS_PRK_EPITHELIAL_MIN, parsed));
+}
+
 function calcSmileLenticuleFromMinimum(baseLenticule, minimumThickness) {
   const minThickness = clampSmileMinimumThickness(minimumThickness);
   return Math.round(baseLenticule + (minThickness - SMILE_MIN_THICKNESS_DEFAULT));
@@ -104,7 +169,7 @@ function calcSmileLenticuleFromMinimum(baseLenticule, minimumThickness) {
 function isOdToOsSyncedKey(key) {
   // Chỉ đồng bộ đúng các trường theo ghi chú UI: Procedure/OZ/Cap syncs to OS.
   // Minimum Thickness phải độc lập theo từng mắt để Lenticule OD/OS không bị kéo nhầm.
-  return ["procedure", "oz", "flap_cap"].includes(key);
+  return ["procedure", "oz", "flap_cap", "epithelial_thickness"].includes(key);
 }
 
 function syncOdFieldToOs(key, value) {
@@ -162,15 +227,23 @@ function calcEye(eye) {
 
   // Ablation: Total Diopters = |Final Laser Sphere| + |Cylinder|
   const totalD = Math.abs(finalLaserSph) + Math.abs(cyl);
-  const ablation = calcAblationDepth(eye.procedure, finalLaserSph, cyl, oz);
+  // Với TransPRK, calcAblationDepth là stromal ablation theo khúc xạ.
+  // Total Ablation = stromal ablation + epithelial thickness.
+  const epithelialThickness = clampTransPrkEpithelialThickness(eye.epithelial_thickness);
+  const transPrkAblation = calculateTransPrkAblation(totalD, epithelialThickness, oz);
+  const stromalAblation = isTransPrkProcedure(eye.procedure)
+    ? transPrkAblation.stromalAblation
+    : calcAblationDepth(eye.procedure, finalLaserSph, cyl, oz);
+  const transPrkInvalid = isTransPrkProcedure(eye.procedure) && !transPrkAblation.isValid;
+  const ablation = isTransPrkProcedure(eye.procedure) ? transPrkAblation.totalAblation : stromalAblation;
   const minimumThickness = clampSmileMinimumThickness(eye.min_thickness);
   const lenticuleZeissForum = eye.procedure === "SMILE Pro"
-    ? calcSmileLenticuleFromMinimum(ablation, minimumThickness)
+    ? calcSmileLenticuleFromMinimum(stromalAblation, minimumThickness)
     : ablation;
   const ptaTissueDepth = eye.procedure === "SMILE Pro" ? lenticuleZeissForum : ablation;
 
-  const rsb = !isNaN(thinnest) && !isNaN(cct) ? calcRSB(eye.procedure, cct, flapCap, ptaTissueDepth) : null;
-  const pta = !isNaN(cct) ? calcPTA(eye.procedure, flapCap, ptaTissueDepth, cct) : null;
+  const rsb = !transPrkInvalid && !isNaN(thinnest) && !isNaN(cct) ? calcRSB(eye.procedure, cct, flapCap, ptaTissueDepth) : null;
+  const pta = !transPrkInvalid && !isNaN(cct) ? calcPTA(eye.procedure, flapCap, ptaTissueDepth, cct) : null;
   const nightRisk = !isNaN(mesopic) ? nightVisionRisk(mesopic, oz) : false;
 
   const k1v = parseFloat(eye.k1), k2v = parseFloat(eye.k2);
@@ -190,7 +263,14 @@ function calcEye(eye) {
   }
 
   const topoAlert = !isNaN(thinnest) && !isNaN(cct) && (cct - thinnest) >= 15;
-  return { sph, cyl, finalLaserSph, ablation, lenticuleZeissForum, minimumThickness, flapCap, rsb, pta, nightRisk, totalD, postK1, postK2, postKMean, vaAlerts, topoAlert, predictedVA };
+  return {
+    sph, cyl, finalLaserSph, stromalAblation, epithelialThickness, ablation, lenticuleZeissForum,
+    minimumThickness, flapCap, rsb, pta, nightRisk, totalD, postK1, postK2, postKMean,
+    vaAlerts, topoAlert, predictedVA,
+    transPrkValidation: isTransPrkProcedure(eye.procedure)
+      ? { isValid: transPrkAblation.isValid, warning: transPrkAblation.warning }
+      : { isValid: true, warning: null },
+  };
 }
 
 window.VisionIDSharedState = window.VisionIDSharedState || {
@@ -207,6 +287,7 @@ window.VisionIDCalculator = {
   calculatePTA: calcPTA,
   calcRSB,
   calcPTA,
+  calculateTransPrkAblation,
   ptaLevel,
   ptaLabel,
   calcEye,
@@ -279,7 +360,8 @@ function eyeSafetyAlerts(eye, calc) {
   if (eye.corvis_status === "caution") alerts.push({ level: "warning", text: "Corvis ST cảnh báo: cân nhắc Crosslinking hoặc giảm mức can thiệp mô." });
   if (eye.corvis_status === "danger") alerts.push({ level: "danger", text: "Corvis ST bất thường: cân nhắc dừng laser và chuyển hướng Phakic ICL." });
   if (calc?.pta !== null && calc?.pta >= 40) alerts.push({ level: "danger", text: `PTA ${calc.pta}% ≥ 40%: Nguy cơ cao - Ectasia risk.` });
-  if (calc?.rsb !== null && calc?.rsb < 300) alerts.push({ level: "danger", text: `RSB ${calc.rsb} um < 300 um: Nguy cơ cao - Ectasia risk.` });
+  const rsbLimit = isTransPrkProcedure(eye.procedure) ? 350 : 300;
+  if (calc?.rsb !== null && calc?.rsb < rsbLimit) alerts.push({ level: "danger", text: `RSB ${calc.rsb} um < ${rsbLimit} um: Nguy cơ cao - Ectasia risk.` });
   return alerts;
 }
 
@@ -356,6 +438,26 @@ function renderSmileProDynamicFields(eye, data, calc) {
       <label>Lenticule (Zeiss Forum)
         <output data-dd-lenticule="${eye}">${lenticule !== "" ? `${lenticule} um` : "—"}</output>
       </label>
+    </div>
+  `;
+}
+
+function renderTransPrkDynamicFields(eye, data, calc) {
+  const visible = isTransPrkProcedure(data.procedure);
+  const epithelialThickness = clampTransPrkEpithelialThickness(data.epithelial_thickness);
+  const stromalAblation = calc?.stromalAblation ?? "";
+  const totalAblation = calc?.ablation ?? "";
+  const invalidWarning = calc?.transPrkValidation?.isValid === false ? calc.transPrkValidation.warning : "";
+  return `
+    <div class="dd-smile-row" data-dd-transprk-fields="${eye}" style="${visible ? "" : "display:none"}">
+      <label>Epithelial Thickness (um)
+        <input data-dd-eye="${eye}" data-dd-key="epithelial_thickness" type="number" min="${TRANS_PRK_EPITHELIAL_MIN}" max="${TRANS_PRK_EPITHELIAL_MAX}" step="1" value="${escapeHtml(epithelialThickness)}">
+      </label>
+      <label>Total Ablation
+        <output data-dd-transprk-ablation="${eye}">${totalAblation !== "" && totalAblation !== null ? `${totalAblation} um` : "Không tính"}</output>
+      </label>
+      <small>Stromal: ${stromalAblation !== "" && stromalAblation !== null ? `${stromalAblation} um` : "—"} + Epi: ${epithelialThickness} um</small>
+      ${invalidWarning ? `<div class="dd-alert danger">${invalidWarning}</div>` : ""}
     </div>
   `;
 }
@@ -474,6 +576,7 @@ function renderDongDoEye(eye, title, code, syncNote) {
           ${ddField("Incision (mm)", "incision", eye, 'type="number" step="0.1" placeholder="2.0"')}
         </div>`)}
         ${renderSmileProDynamicFields(eye, data, calc)}
+        ${renderTransPrkDynamicFields(eye, data, calc)}
         <div class="dd-calc-slot" data-dd-results="${eye}">
           ${calc ? renderDongDoResults(calc, data) : `<div class="dd-empty-calc">Fill in Group 4 to view results</div>`}
         </div>
@@ -503,8 +606,13 @@ function renderVaAlerts(eye) {
 function renderDongDoResults(calc, data) {
   const tier = ptaLevel(calc.pta, data.procedure);
   const isSmile = data.procedure === "SMILE Pro";
-  const tissueLabel = isSmile || data.procedure === "CLEAR" ? "Lenticule (Zeiss Forum)" : "Ablation";
+  const isTransPrk = isTransPrkProcedure(data.procedure);
+  const tissueLabel = isSmile || data.procedure === "CLEAR"
+    ? "Lenticule (Zeiss Forum)"
+    : isTransPrk ? "Total Ablation (Stromal + Epithelium)" : "Ablation";
   const tissueValue = isSmile ? calc.lenticuleZeissForum : calc.ablation;
+  const rsbLimit = isTransPrk ? 350 : 300;
+  const transPrkInvalid = isTransPrk && calc.transPrkValidation?.isValid === false;
   return `
     <div class="dd-results">
       <div class="dd-results-title">Calculation Results</div>
@@ -513,8 +621,10 @@ function renderDongDoResults(calc, data) {
         <div><span>Input Cylinder</span><strong>${calc.cyl >= 0 ? "+" : ""}${calc.cyl.toFixed(2)} D</strong></div>
         <div><span>Total Diopters</span><strong>${calc.totalD.toFixed(2)} D</strong></div>
       </div>
-      <div class="dd-main-metric"><span>${tissueLabel}</span><strong>${tissueValue} um</strong></div>
-      ${calc.rsb !== null ? `<div class="dd-main-metric ${calc.rsb >= 300 ? "safe" : "danger"}"><span>RSB ${calc.rsb < 300 ? "ECTASIA RISK" : ""}</span><strong>${calc.rsb} um</strong></div>` : ""}
+      ${transPrkInvalid ? `<div class="dd-alert danger">${calc.transPrkValidation.warning}</div>` : ""}
+      <div class="dd-main-metric ${transPrkInvalid ? "danger" : ""}"><span>${tissueLabel}</span><strong>${tissueValue !== null ? `${tissueValue} um` : "Không tính"}</strong></div>
+      ${isTransPrk ? `<div class="dd-main-metric ${transPrkInvalid ? "danger" : ""}"><span>Stromal Ablation</span><strong>${calc.stromalAblation !== null ? `${calc.stromalAblation} um` : "Không tính"}</strong></div>` : ""}
+      ${calc.rsb !== null ? `<div class="dd-main-metric ${calc.rsb >= rsbLimit ? "safe" : "danger"}"><span>RSB ${calc.rsb < rsbLimit ? "ECTASIA RISK" : ""}</span><strong>${calc.rsb} um</strong></div>` : ""}
       ${calc.pta !== null ? `<div class="dd-main-metric ${tier}"><span>PTA - ${ptaLabel(calc.pta, data.procedure)}</span><strong>${calc.pta}%</strong></div>` : ""}
       ${renderClinicalAlerts(data, calc)}
       ${renderCalculationScreeningAlerts(data)}
@@ -529,15 +639,26 @@ function renderDongDoResults(calc, data) {
 
 function renderOzOptimization(data, calc) {
   const rows = ["6.2", "6.5", "6.8"].map((oz) => {
-    const ablation = calcAblationDepth(data.procedure, calc.finalLaserSph, calc.cyl, parseFloat(oz));
+    const totalD = Math.abs(calc.finalLaserSph) + Math.abs(calc.cyl);
+    const transPrkAblation = calculateTransPrkAblation(totalD, data.epithelial_thickness, oz);
+    const stromalAblation = isTransPrkProcedure(data.procedure)
+      ? transPrkAblation.stromalAblation
+      : calcAblationDepth(data.procedure, calc.finalLaserSph, calc.cyl, parseFloat(oz));
+    const ablation = isTransPrkProcedure(data.procedure)
+      ? transPrkAblation.totalAblation
+      : stromalAblation;
     const flapCap = data.flap_cap !== "" && !isNaN(parseFloat(data.flap_cap)) ? parseFloat(data.flap_cap) : defaultFlapCap(data.procedure);
     const cct = parseFloat(data.cct);
     const tissueDepth = data.procedure === "SMILE Pro"
       ? calcSmileLenticuleFromMinimum(ablation, data.min_thickness)
       : ablation;
-    const rsb = !isNaN(cct) ? calcRSB(data.procedure, cct, flapCap, tissueDepth) : null;
-    const pta = !isNaN(cct) ? calcPTA(data.procedure, flapCap, tissueDepth, cct) : null;
-    return `<tr><td>${oz} mm</td><td>${ablation} um</td><td>${rsb ?? "—"} um</td><td>${pta ?? "—"}%</td></tr>`;
+    const isInvalidTransPrk = isTransPrkProcedure(data.procedure) && transPrkAblation.isValid === false;
+    const rsb = !isInvalidTransPrk && !isNaN(cct) ? calcRSB(data.procedure, cct, flapCap, tissueDepth) : null;
+    const pta = !isInvalidTransPrk && !isNaN(cct) ? calcPTA(data.procedure, flapCap, tissueDepth, cct) : null;
+    const ablationCell = isInvalidTransPrk
+      ? "Không tính"
+      : isTransPrkProcedure(data.procedure) ? `${ablation} um (${stromalAblation}+epi)` : `${ablation} um`;
+    return `<tr><td>${oz} mm</td><td>${ablationCell}</td><td>${rsb ?? "—"} um</td><td>${pta ?? "—"}%</td></tr>`;
   }).join("");
   return `<div class="dd-oz"><strong>OZ Optimization</strong><table><thead><tr><th>OZ</th><th>Ablation</th><th>RSB</th><th>PTA</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
@@ -551,7 +672,9 @@ function renderDongDoPlan(plan) {
   const osPta = plan.calcOS?.pta;
   const odRsb = plan.calcOD?.rsb;
   const osRsb = plan.calcOS?.rsb;
-  const risk = (odPta !== null && odPta !== undefined && odPta >= 40) || (osPta !== null && osPta !== undefined && osPta >= 40) || (odRsb !== null && odRsb !== undefined && odRsb < 300) || (osRsb !== null && osRsb !== undefined && osRsb < 300);
+  const odRsbLimit = isTransPrkProcedure(plan.od?.procedure) ? 350 : 300;
+  const osRsbLimit = isTransPrkProcedure(plan.os?.procedure) ? 350 : 300;
+  const risk = (odPta !== null && odPta !== undefined && odPta >= 40) || (osPta !== null && osPta !== undefined && osPta >= 40) || (odRsb !== null && odRsb !== undefined && odRsb < odRsbLimit) || (osRsb !== null && osRsb !== undefined && osRsb < osRsbLimit);
   return `<article class="dd-row ${risk ? "dd-row-danger" : ""}"><div><strong>${escapeHtml(plan.patient.name)}</strong>${risk ? `<em>Nguy cơ cao - Ectasia risk</em>` : ""}<span>ID: ${escapeHtml(plan.patient.id)} · YOB: ${escapeHtml(plan.patient.year || "—")} · Saved: ${escapeHtml(plan.savedAt)}</span><span>OD PTA/RSB: ${odPta ?? "—"}% / ${odRsb ?? "—"} um · OS PTA/RSB: ${osPta ?? "—"}% / ${osRsb ?? "—"} um</span></div><button data-dd-load-plan="${plan.id}" tabindex="-1">Load</button><button data-dd-delete-plan="${plan.id}" class="dd-delete" tabindex="-1">Delete</button></article>`;
 }
 
@@ -610,8 +733,29 @@ function updateDongDoSmileFields() {
     const calc = calcEye(dongdoState[eye]);
     if (output) output.textContent = calc ? `${calc.lenticuleZeissForum} um` : "—";
   });
+  updateDongDoTransPrkFields();
   updateDongDoCornealWarningFields();
   installDongDoTabOrder();
+}
+
+function updateDongDoTransPrkFields() {
+  ["od", "os"].forEach((eye) => {
+    const row = document.querySelector(`[data-dd-transprk-fields="${eye}"]`);
+    const input = document.querySelector(`[data-dd-eye="${eye}"][data-dd-key="epithelial_thickness"]`);
+    const output = document.querySelector(`[data-dd-transprk-ablation="${eye}"]`);
+    if (!row) return;
+
+    const isTransPrk = isTransPrkProcedure(dongdoState[eye].procedure);
+    row.style.display = isTransPrk ? "" : "none";
+    if (!isTransPrk) return;
+
+    const clamped = clampTransPrkEpithelialThickness(dongdoState[eye].epithelial_thickness);
+    dongdoState[eye].epithelial_thickness = String(clamped);
+    if (input && input.value !== String(clamped)) input.value = String(clamped);
+
+    const calc = calcEye(dongdoState[eye]);
+    if (output) output.textContent = calc ? `${calc.ablation} um` : "—";
+  });
 }
 
 function updateDongDoCornealWarningFields() {
@@ -881,12 +1025,14 @@ function attachDongDoEvents() {
       if (patientKey === "dominant") renderDongDo();
     }
     if (eye && key) {
-      const value = key === "min_thickness" ? String(clampSmileMinimumThickness(event.target.value)) : event.target.value;
+      const value = key === "min_thickness"
+        ? String(clampSmileMinimumThickness(event.target.value))
+        : key === "epithelial_thickness" ? String(clampTransPrkEpithelialThickness(event.target.value)) : event.target.value;
       dongdoState[eye][key] = value;
-      if (key === "min_thickness" && event.target.value !== value) event.target.value = value;
+      if ((key === "min_thickness" || key === "epithelial_thickness") && event.target.value !== value) event.target.value = value;
       if (eye === "od") syncOdFieldToOs(key, value);
       updateDongDoSmileFields();
-      if (key === "min_thickness" || isOdToOsSyncedKey(key)) refreshDongDoResults();
+      if (key === "min_thickness" || key === "epithelial_thickness" || isOdToOsSyncedKey(key)) refreshDongDoResults();
       else scheduleDongDoRefresh();
     }
   });
@@ -900,12 +1046,14 @@ function attachDongDoEvents() {
       if (patientKey === "dominant") renderDongDo();
     }
     if (eye && key) {
-      const value = key === "min_thickness" ? String(clampSmileMinimumThickness(event.target.value)) : event.target.value;
+      const value = key === "min_thickness"
+        ? String(clampSmileMinimumThickness(event.target.value))
+        : key === "epithelial_thickness" ? String(clampTransPrkEpithelialThickness(event.target.value)) : event.target.value;
       dongdoState[eye][key] = value;
-      if (key === "min_thickness" && event.target.value !== value) event.target.value = value;
+      if ((key === "min_thickness" || key === "epithelial_thickness") && event.target.value !== value) event.target.value = value;
       if (eye === "od") syncOdFieldToOs(key, value);
       updateDongDoSmileFields();
-      if (key === "min_thickness" || isOdToOsSyncedKey(key)) refreshDongDoResults();
+      if (key === "min_thickness" || key === "epithelial_thickness" || isOdToOsSyncedKey(key)) refreshDongDoResults();
       else scheduleDongDoRefresh();
     }
   });
