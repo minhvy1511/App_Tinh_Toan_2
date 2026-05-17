@@ -255,8 +255,14 @@ def calculate_icl_power_stear(sph, cyl, axis, k1, k2, acd, vertex=12.0):
 
     # Công thức Phakic ICL chuẩn của van der Heijde
     def calc_phakic_meridian(p_c):
-        term1 = n / ((n / (p_c + k_mean)) - elp)
-        term2 = n / ((n / k_mean) - elp)
+        if k_mean == 0 or (p_c + k_mean) == 0:
+            return 0
+        denom1 = (n / (p_c + k_mean)) - elp
+        denom2 = (n / k_mean) - elp
+        if denom1 == 0 or denom2 == 0:
+            return 0
+        term1 = n / denom1
+        term2 = n / denom2
         return term1 - term2
 
     icl_m1 = calc_phakic_meridian(cornea_m1)

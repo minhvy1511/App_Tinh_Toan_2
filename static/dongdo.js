@@ -4,6 +4,7 @@ const DONGDO_CREATOR_TAGLINE = "ĐI ĐẦU CÔNG NGHỆ - ĐỊNH HƯỚNG TƯƠ
 const DONGDO_PROCEDURES = ["SMILE Pro", "CLEAR", "SmartSight", "Femto-LASIK", "Trans-PRK", "PRESBYOND", "PresbyMAX"];
 const DONGDO_NAVY = "#0a3d6b";
 const DONGDO_TEAL = "#2ab3b8";
+const DONGDO_EYES = ["od", "os"];
 const LS_PLANS = "visionid_plans";
 const LS_SHEETS_URL = "visionid_sheets_url";
 const SMILE_MIN_THICKNESS_DEFAULT = 15;
@@ -93,8 +94,8 @@ function ozAblationFactor(oz) {
   return 1.0;
 }
 
-function calcAblationDepth(procedure, finalLaserSph, cyl, oz) {
-  const totalD = Math.abs(finalLaserSph) + Math.abs(cyl);
+function calcAblationDepthFromTreatment(procedure, totalTreatment, oz) {
+  const totalD = Math.abs(parseFloat(totalTreatment) || 0);
   const factor = ozAblationFactor(oz);
 
   if (isTransPrkProcedure(procedure)) {
@@ -115,6 +116,11 @@ function calcAblationDepth(procedure, finalLaserSph, cyl, oz) {
   const table = tables[tableKey] || tables.SmartSight;
   const base = interpolateAblationTable(table, totalD);
   return Math.round(base * factor);
+}
+
+function calcAblationDepth(procedure, finalLaserSph, cyl, oz) {
+  const treatment = calculateAlteredTreatment(finalLaserSph, cyl, 0);
+  return calcAblationDepthFromTreatment(procedure, treatment.totalTreatment, oz);
 }
 
 function interpolateAblationTable(table, totalDiopters) {
@@ -373,6 +379,18 @@ function syncOdFieldToOs(key, value) {
   if (synced && synced.value !== value) synced.value = value;
 }
 
+function calcStateKey(eye) {
+  return eye === "od" ? "calcOD" : "calcOS";
+}
+
+function getEyeCalc(eye) {
+  return dongdoState[calcStateKey(eye)];
+}
+
+function setEyeCalc(eye, calc) {
+  dongdoState[calcStateKey(eye)] = calc;
+}
+
 function applyPresbyondDefaults(eye, force = false) {
   if (!isPresbyondProcedure(dongdoState[eye]?.procedure)) return;
   if (force || dongdoState[eye].target_sph === "") {
@@ -417,10 +435,19 @@ function tbutAlert(tbut) {
   return { level: "success", text: "✓ Normal tear film (Màng phim nước mắt bình thường)" };
 }
 
-function highCylAlert(cyl) {
+function highCylAlert(cyl, procedure) {
   const v = parseFloat(cyl);
-  if (isNaN(v) || Math.abs(v) < 2.0) return null;
-  return "High Astigmatism: Upright manual marking or Iris Registration mandatory (Loạn thị cao: Yêu cầu kích hoạt nhận diện mống mắt trên máy Laser)";
+  if (!Number.isFinite(v) || Math.abs(v) <= 1.75) return null;
+  if (procedure === "SMILE Pro") {
+    return "🔮 Loạn thị cao (>1.75D): Yêu cầu kích hoạt định vị OcuLign® trên máy SMILE Pro để kiểm soát và bù trừ xoay trục nhãn cầu tự động.";
+  }
+  if (procedure === "SmartSight") {
+    return "🔮 Loạn thị cao (>1.75D): Yêu cầu kích hoạt tính năng định tâm và bù trừ trục xoay CenTrax® kết hợp Iris Registration trên máy mổ.";
+  }
+  if (procedure === "Femto-LASIK" || isTransPrkProcedure(procedure)) {
+    return "🔮 Loạn thị cao (>1.75D): Yêu cầu bắt buộc kích hoạt tính năng Nhận diện và Bù trừ tĩnh (Static Cyclotorsion Compensation - SCC) trên hệ thống Schwind CAM / Sirius.";
+  }
+  return "🔮 Loạn thị cao (>1.75D): Cần kiểm soát xoay trục, định tâm và xác nhận đăng ký mống mắt trước điều trị.";
 }
 
 // Converted from the supplied React code. Formula steps are preserved.
@@ -487,7 +514,7 @@ function calcEye(eye) {
     ? transPrkAblation.stromalAblation
     : eye.procedure === "SMILE Pro" ? smileLenticule
       : isPresbyond ? presbyondPlan.ablation
-        : isPresbyMax ? presbyMaxPlan.ablation : calcAblationDepth(eye.procedure, finalLaserSph, cyl, oz);
+        : isPresbyMax ? presbyMaxPlan.ablation : calcAblationDepthFromTreatment(eye.procedure, totalD, oz);
   const transPrkInvalid = isTransPrkProcedure(eye.procedure) && !transPrkAblation.isValid;
   const ablation = isTransPrkProcedure(eye.procedure)
     ? transPrkAblation.totalAblation
@@ -541,6 +568,7 @@ window.VisionIDSharedState = window.VisionIDSharedState || {
 
 window.VisionIDCalculator = {
   defaultFlapCap,
+  calcAblationDepthFromTreatment,
   calcAblationDepth,
   calculateRSB: calcRSB,
   calculatePTA: calcPTA,
@@ -704,6 +732,11 @@ function renderTreatmentPlanFields(eye, data) {
   </div>`;
 }
 
+function renderHighCylAlert(eye) {
+  const alert = highCylAlert(dongdoState[eye].cyl, dongdoState[eye].procedure);
+  return `<div data-dd-high-cyl="${eye}">${alert ? `<div class="dd-alert purple">${alert}</div>` : ""}</div>`;
+}
+
 function renderSmileProDynamicFields(eye, data, calc) {
   const visible = data.procedure === "SMILE Pro";
   const minThickness = clampSmileMinimumThickness(data.min_thickness);
@@ -800,12 +833,12 @@ function renderDongDoPlanning() {
 
 function renderDongDoEye(eye, title, code, syncNote) {
   const data = dongdoState[eye];
-  const calc = eye === "od" ? dongdoState.calcOD : dongdoState.calcOS;
+  const calc = getEyeCalc(eye);
   const hoa = numOrNull(data.hoa_rms);
   const tbut = numOrNull(data.tbut);
   const hoaA = hoa !== null ? hoaAlert(hoa) : null;
   const tbutA = tbut !== null ? tbutAlert(tbut) : null;
-  const highCyl = highCylAlert(data.cyl);
+  const highCyl = highCylAlert(data.cyl, data.procedure);
   return `
     <section class="dd-eye-card">
       <header><b>${code}</b><strong>${title}${dongdoState.patient.dominant === code ? " ★" : ""}</strong>${syncNote ? "<span>* Procedure/OZ/Cap syncs to OS</span>" : ""}</header>
@@ -844,7 +877,7 @@ function renderDongDoEye(eye, title, code, syncNote) {
           ${ddField("Current BCVA", "mf_bcva", eye, 'placeholder="20/20"')}
         </div>`)}
         ${ddGroup("3. Treatment Plan (Laser Parameters)", `${renderTreatmentPlanFields(eye, data)}
-        ${highCyl ? `<div class="dd-alert purple">${highCyl}</div>` : ""}
+        ${renderHighCylAlert(eye)}
         ${renderVaAlerts(data)}`)}
         ${ddGroup("4. Surgical Plan", `<div class="dd-grid cols-4">
           ${ddSelect("Procedure", "procedure", eye, DONGDO_PROCEDURES)}
@@ -932,10 +965,10 @@ function renderOzOptimization(data, calc) {
       ? transPrkAblation.stromalAblation
         : data.procedure === "SMILE Pro" ? smileLenticule
           : isPresbyondProcedure(data.procedure)
-            ? calculatePresbyondAblation(data.sph, data.cyl, data.target_sph, oz).ablation
-            : isPresbyMaxProcedure(data.procedure)
-              ? calculatePresbyMaxAblation(data.sph, data.cyl, data.target_sph, oz).ablation
-              : calcAblationDepth(data.procedure, calc.finalLaserSph, calc.cyl, parseFloat(oz));
+          ? calculatePresbyondAblation(data.sph, data.cyl, data.target_sph, oz).ablation
+          : isPresbyMaxProcedure(data.procedure)
+            ? calculatePresbyMaxAblation(data.sph, data.cyl, data.target_sph, oz).ablation
+            : calcAblationDepthFromTreatment(data.procedure, totalD, parseFloat(oz));
     const ablation = isTransPrkProcedure(data.procedure)
       ? transPrkAblation.totalAblation
       : stromalAblation;
@@ -971,20 +1004,19 @@ function renderDongDoPlan(plan) {
 }
 
 function handleDongDoCalculate() {
-  dongdoState.calcOD = calcEye(dongdoState.od);
-  dongdoState.calcOS = calcEye(dongdoState.os);
+  DONGDO_EYES.forEach((eye) => setEyeCalc(eye, calcEye(dongdoState[eye])));
   renderDongDo();
 }
 
 function recalcDongDo() {
-  dongdoState.calcOD = calcEye(dongdoState.od);
-  dongdoState.calcOS = calcEye(dongdoState.os);
+  DONGDO_EYES.forEach((eye) => setEyeCalc(eye, calcEye(dongdoState[eye])));
   syncDongDoSharedState();
 }
 
 function refreshDongDoResults() {
   recalcDongDo();
   updateDongDoResultSlots();
+  updateDongDoHighCylAlerts();
 }
 
 function scheduleDongDoRefresh() {
@@ -993,22 +1025,18 @@ function scheduleDongDoRefresh() {
 }
 
 function updateDongDoResultSlots() {
-  const odSlot = document.querySelector('[data-dd-results="od"]');
-  const osSlot = document.querySelector('[data-dd-results="os"]');
-  if (odSlot) {
-    odSlot.innerHTML = dongdoState.calcOD
-      ? renderDongDoResults(dongdoState.calcOD, dongdoState.od)
+  DONGDO_EYES.forEach((eye) => {
+    const slot = document.querySelector(`[data-dd-results="${eye}"]`);
+    if (!slot) return;
+    const calc = getEyeCalc(eye);
+    slot.innerHTML = calc
+      ? renderDongDoResults(calc, dongdoState[eye])
       : `<div class="dd-empty-calc">Fill in Group 4 to view results</div>`;
-  }
-  if (osSlot) {
-    osSlot.innerHTML = dongdoState.calcOS
-      ? renderDongDoResults(dongdoState.calcOS, dongdoState.os)
-      : `<div class="dd-empty-calc">Fill in Group 4 to view results</div>`;
-  }
+  });
 }
 
 function updateDongDoSmileFields() {
-  ["od", "os"].forEach((eye) => {
+  DONGDO_EYES.forEach((eye) => {
     const row = document.querySelector(`[data-dd-smile-fields="${eye}"]`);
     const input = document.querySelector(`[data-dd-eye="${eye}"][data-dd-key="min_thickness"]`);
     const output = document.querySelector(`[data-dd-lenticule="${eye}"]`);
@@ -1025,18 +1053,19 @@ function updateDongDoSmileFields() {
     const calc = calcEye(dongdoState[eye]);
     if (output) output.textContent = calc ? `${calc.lenticuleZeissForum} um` : "—";
   });
-  ["od", "os"].forEach((eye) => {
+  DONGDO_EYES.forEach((eye) => {
     applyPresbyondDefaults(eye, false);
     applyPresbyMaxDefaults(eye, false);
   });
   updateDongDoTransPrkFields();
   updateDongDoPresbyondFields();
+  updateDongDoHighCylAlerts();
   updateDongDoCornealWarningFields();
   installDongDoTabOrder();
 }
 
 function updateDongDoTransPrkFields() {
-  ["od", "os"].forEach((eye) => {
+  DONGDO_EYES.forEach((eye) => {
     const row = document.querySelector(`[data-dd-transprk-fields="${eye}"]`);
     const input = document.querySelector(`[data-dd-eye="${eye}"][data-dd-key="epithelial_thickness"]`);
     const output = document.querySelector(`[data-dd-transprk-ablation="${eye}"]`);
@@ -1056,7 +1085,7 @@ function updateDongDoTransPrkFields() {
 }
 
 function updateDongDoPresbyondFields() {
-  ["od", "os"].forEach((eye) => {
+  DONGDO_EYES.forEach((eye) => {
     const targetInput = document.querySelector(`[data-dd-eye="${eye}"][data-dd-key="target_sph"]`);
     const flapInput = document.querySelector(`[data-dd-eye="${eye}"][data-dd-key="flap_cap"]`);
 
@@ -1073,8 +1102,17 @@ function updateDongDoPresbyondFields() {
   });
 }
 
+function updateDongDoHighCylAlerts() {
+  DONGDO_EYES.forEach((eye) => {
+    const slot = document.querySelector(`[data-dd-high-cyl="${eye}"]`);
+    if (!slot) return;
+    const alert = highCylAlert(dongdoState[eye].cyl, dongdoState[eye].procedure);
+    slot.innerHTML = alert ? `<div class="dd-alert purple">${alert}</div>` : "";
+  });
+}
+
 function updateDongDoCornealWarningFields() {
-  ["od", "os"].forEach((eye) => {
+  DONGDO_EYES.forEach((eye) => {
     const data = dongdoState[eye] || {};
     const thinnest = parseFloat(data.thinnest_point);
     const cct = parseFloat(data.cct);

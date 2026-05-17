@@ -1,0 +1,75 @@
+[
+  {
+    "id": 1,
+    "patient_name": "BÙI ĐĂNG TOÀN",
+    "patient_id": "BN-2026-001",
+    "surgeon": "",
+    "payload": {
+      "plan_type": "phakic",
+      "patient": {
+        "name": "BÙI ĐĂNG TOÀN",
+        "yob": 1981,
+        "id": "BN-2026-001",
+        "surgeon": "",
+        "dominant_eye": "OD"
+      },
+      "od": {
+        "max_sph": -8.5,
+        "max_cyl": -3.5,
+        "max_axis": 180,
+        "vertex": 12,
+        "wtw": 12,
+        "ata": 11,
+        "acd": 0,
+        "cct": 0,
+        "k1": 0,
+        "k2": 0,
+        "proc": "Phakic ICL"
+      },
+      "os": {
+        "max_sph": 0,
+        "max_cyl": 0,
+        "max_axis": 0,
+        "vertex": 12,
+        "wtw": 0,
+        "ata": 0,
+        "acd": 0,
+        "cct": 0,
+        "k1": 0,
+        "k2": 0,
+        "proc": "Phakic ICL"
+      },
+      "notes": "",
+      "current_year": 2026,
+      "phakic_result": {
+        "patient_age": 45,
+        "eyes": {
+          "od": {
+            "warnings": [],
+            "procedure": "Phakic ICL"
+          },
+          "os": {
+            "warnings": [],
+            "procedure": "Phakic ICL"
+          }
+        }
+      },
+      "phakic_api_result": null
+    },
+    "result": {
+      "patient_age": 45,
+      "eyes": {
+        "od": {
+          "procedure": "Phakic ICL",
+          "warnings": []
+        },
+        "os": {
+          "procedure": "Phakic ICL",
+          "warnings": []
+        }
+      }
+    },
+    "notes": "",
+    "created_at": "2026-05-17T16:14:41.790571Z"
+  }
+]
