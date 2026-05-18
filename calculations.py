@@ -200,12 +200,12 @@ def predict_vault(selected_size, ata, acd):
         vault_final = round(vault_raw / 10.0) * 10
 
         warning_msg = ""
-        if vault_final < 250:
-            warning_msg = f"⚠ CẢNH BÁO: Nguy cơ LOW VAULT ({vault_final} µm). Xem xét tăng size."
-        elif vault_final > 750:
-            warning_msg = f"⚠ CẢNH BÁO: Nguy cơ HIGH VAULT ({vault_final} µm). Xem xét giảm size."
+        if vault_final < 150 or vault_final > 900:
+            warning_msg = "🚨 CRITICAL: High Risk of Complications. Change Size recommended!"
+        elif vault_final < 250 or vault_final > 750:
+            warning_msg = "⚠ Borderline Vault - Clinical monitoring required"
         else:
-            warning_msg = f"✓ Vault dự kiến an toàn: {vault_final} µm."
+            warning_msg = "✓ Safe Vault Zone"
 
         return int(vault_final), warning_msg
     except Exception:
@@ -219,9 +219,9 @@ def calculate_icl_sizing(wtw, acd, ata=None):
     vault_level = "none"
     if ata not in (None, "") and isinstance(size_result["recommended_size"], (int, float)):
         vault_um, vault_warning = predict_vault(size_result["recommended_size"], ata, acd)
-        if vault_warning and "HIGH VAULT" in vault_warning:
+        if vault_warning and "CRITICAL" in vault_warning:
             vault_level = "danger"
-        elif vault_warning and "LOW VAULT" in vault_warning:
+        elif vault_warning and "Borderline" in vault_warning:
             vault_level = "warning"
         elif vault_warning:
             vault_level = "success"
@@ -425,6 +425,7 @@ def calculate_phakic_eye(payload):
             "axis": max_axis,
             "vertex": vertex,
             "wtw": _number(payload.get("wtw"), None),
+            "ata": _number(payload.get("ata"), None),
             "acd": acd,
             "cct": cct,
             "k1": k1,

@@ -377,6 +377,61 @@ function phakicApiPayload(data) {
   return payload;
 }
 
+const ICL_SIZE_OPTIONS = [12.1, 12.6, 13.2, 13.7];
+
+function calculateVaultPrediction(selectedSize, ata, acd) {
+  const size = Number(selectedSize);
+  const ataValue = Number(ata);
+  const acdValue = Number(acd);
+  if (!Number.isFinite(size) || !Number.isFinite(ataValue) || !Number.isFinite(acdValue)) {
+    return { value: null, level: "none", message: "Enter ATA and ACD to calculate predicted vault." };
+  }
+  const raw = 500 + 500 * (size - ataValue - 0.8) + 100 * (3.2 - acdValue);
+  const value = Math.round(raw / 10) * 10;
+  if (value < 150 || value > 900) {
+    return { value, level: "danger", message: "🚨 CRITICAL: High Risk of Complications. Change Size recommended!" };
+  }
+  if ((value >= 150 && value < 250) || (value > 750 && value <= 900)) {
+    return { value, level: "warning", message: "⚠ Borderline Vault - Clinical monitoring required" };
+  }
+  return { value, level: "success", message: "✓ Safe Vault Zone" };
+}
+
+function vaultPanelHtml(vault) {
+  const valueText = vault.value === null ? "—" : `${vault.value} µm`;
+  return `
+    <div class="phakic-vault-panel ${vault.level}" data-vault-panel>
+      <span>Predicted Vault</span>
+      <strong>${valueText}</strong>
+      <p>${vault.message}</p>
+    </div>
+  `;
+}
+
+function renderManualSizeControl(label, result) {
+  const preop = result.preop_summary || {};
+  const recommended = Number(result.recommended_size);
+  const selected = Number.isFinite(recommended) ? recommended : "";
+  const vault = calculateVaultPrediction(selected, preop.ata, preop.acd);
+  const options = ICL_SIZE_OPTIONS.map((size) => (
+    `<option value="${size.toFixed(1)}" ${Number(selected) === size ? "selected" : ""}>${size.toFixed(1)} mm</option>`
+  )).join("");
+  return `
+    <div class="phakic-vault-control"
+      data-phakic-vault
+      data-eye-label="${label}"
+      data-ata="${preop.ata ?? ""}"
+      data-acd="${preop.acd ?? ""}">
+      <label>Manual Size Selection
+        <select class="phakic-size-select" aria-label="${label} manual ICL size selection">
+          ${options}
+        </select>
+      </label>
+      ${vaultPanelHtml(vault)}
+    </div>
+  `;
+}
+
 function renderPhakicEyeResult(label, result) {
   const preop = result.preop_summary || {};
   const lens = result.ordered_lens || {};
@@ -405,8 +460,9 @@ function renderPhakicEyeResult(label, result) {
           <tbody>
             <tr><th>Sph</th><td>${signed(preop.sph)}</td><th>Cyl</th><td>${signed(preop.cyl)}</td></tr>
             <tr><th>Axis</th><td>${fmt(preop.axis, "°", 0)}</td><th>BVD</th><td>${fmt(preop.vertex, " mm", 1)}</td></tr>
-            <tr><th>WTW</th><td>${fmt(preop.wtw, " mm", 1)}</td><th>ACD</th><td>${fmt(preop.acd, " mm", 2)}</td></tr>
-            <tr><th>CCT</th><td>${fmt(preop.cct, " µm", 0)}</td><th>K1 / K2</th><td>${fmt(preop.k1, "", 2)} / ${fmt(preop.k2, "", 2)} D</td></tr>
+            <tr><th>WTW</th><td>${fmt(preop.wtw, " mm", 1)}</td><th>ATA</th><td>${fmt(preop.ata, " mm", 1)}</td></tr>
+            <tr><th>ACD</th><td>${fmt(preop.acd, " mm", 2)}</td><th>CCT</th><td>${fmt(preop.cct, " µm", 0)}</td></tr>
+            <tr><th>K1 / K2</th><td colspan="3">${fmt(preop.k1, "", 2)} / ${fmt(preop.k2, "", 2)} D</td></tr>
             <tr><th>OCOS Size</th><td colspan="3">${sizeText}</td></tr>
           </tbody>
         </table>
@@ -426,9 +482,7 @@ function renderPhakicEyeResult(label, result) {
           </tbody>
         </table>
       </div>
-      ${(result.vault_warnings || []).length
-        ? `<div class="notice warning">${result.vault_warnings.map((message) => `<p>${message}</p>`).join("")}</div>`
-        : ""}
+      ${renderManualSizeControl(label, result)}
     </section>
   `;
 }
@@ -519,6 +573,35 @@ function updatePhakicNotes(response) {
   alertBox.innerHTML = `${vaultHtml}${criticalHtml}`;
 }
 
+function updateManualVaultControl(control) {
+  const select = control.querySelector(".phakic-size-select");
+  const panel = control.querySelector("[data-vault-panel]");
+  if (!select || !panel) return;
+  const vault = calculateVaultPrediction(select.value, control.dataset.ata, control.dataset.acd);
+  panel.className = `phakic-vault-panel ${vault.level}`;
+  panel.innerHTML = `
+    <span>Predicted Vault</span>
+    <strong>${vault.value === null ? "—" : `${vault.value} µm`}</strong>
+    <p>${vault.message}</p>
+  `;
+}
+
+function syncPhakicVaultNotesFromDom() {
+  const notes = document.querySelector('#phakicForm textarea[name="notes"]');
+  const alertBox = document.getElementById("phakicNotesAlert");
+  if (!notes || !alertBox) return;
+  const rows = [...document.querySelectorAll("[data-phakic-vault]")].map((control) => {
+    const label = control.dataset.eyeLabel || "Eye";
+    const size = control.querySelector(".phakic-size-select")?.value || "—";
+    const panel = control.querySelector("[data-vault-panel]");
+    const value = panel?.querySelector("strong")?.textContent || "—";
+    const message = panel?.querySelector("p")?.textContent || "";
+    return { label, text: `${label}: Size ${size} mm | Vault ${value} | ${message}` };
+  });
+  notes.value = rows.length ? rows.map((row) => row.text).join("\n") : notes.value;
+  alertBox.innerHTML = rows.map((row) => `<p><strong>${row.text}</strong></p>`).join("");
+}
+
 async function calculatePhakicPreview() {
   const target = document.getElementById("phakicResult");
   const form = document.getElementById("phakicForm");
@@ -535,6 +618,7 @@ async function calculatePhakicPreview() {
     const os = response.results.os ? renderPhakicEyeResult("Left Eye (OS)", response.results.os) : "";
     target.innerHTML = `${od}${os}`;
     updatePhakicNotes(response);
+    syncPhakicVaultNotesFromDom();
   } catch (error) {
     target.innerHTML = `<div class="notice danger">Insufficient data for Phakic ICL calculation: ${error.message}</div>`;
   }
@@ -809,6 +893,14 @@ function attachCalculation() {
     schedulePhakicPreview();
   });
   document.getElementById("printPhakic")?.addEventListener("click", () => window.print());
+  document.addEventListener("change", (event) => {
+    const select = event.target.closest(".phakic-size-select");
+    if (!select) return;
+    const control = select.closest("[data-phakic-vault]");
+    if (!control) return;
+    updateManualVaultControl(control);
+    syncPhakicVaultNotesFromDom();
+  });
   document.addEventListener("click", (event) => {
     const review = event.target.closest("[data-review-plan]");
     if (!review) return;

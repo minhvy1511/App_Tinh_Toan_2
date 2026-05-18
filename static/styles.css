@@ -912,6 +912,89 @@ select.input-warning {
   font-weight: 900;
 }
 
+.phakic-vault-control {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.phakic-vault-control label {
+  display: grid;
+  gap: 6px;
+  color: #034640;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.phakic-vault-control select {
+  width: min(240px, 100%);
+  min-height: 38px;
+  border: 1px solid var(--dd-teal-line);
+  border-radius: 8px;
+  background: #fff;
+  color: #0f172a;
+  padding: 0 10px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.phakic-vault-panel {
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: #f8fafc;
+}
+
+.phakic-vault-panel span {
+  display: block;
+  color: #475467;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.phakic-vault-panel strong {
+  display: block;
+  margin-top: 3px;
+  color: #0f172a;
+  font-size: 24px;
+  font-weight: 950;
+}
+
+.phakic-vault-panel p {
+  margin: 5px 0 0;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.phakic-vault-panel.success {
+  background: #ecfdf3;
+  border-color: #abefc6;
+  color: #067647;
+}
+
+.phakic-vault-panel.warning {
+  background: #fffaeb;
+  border-color: #fedf89;
+  color: #b54708;
+}
+
+.phakic-vault-panel.danger {
+  background: #fef3f2;
+  border-color: #fecdca;
+  color: #b42318;
+}
+
+.phakic-vault-panel.success strong,
+.phakic-vault-panel.success p { color: #067647; }
+
+.phakic-vault-panel.warning strong,
+.phakic-vault-panel.warning p { color: #b54708; }
+
+.phakic-vault-panel.danger strong,
+.phakic-vault-panel.danger p { color: #b42318; }
+
 .vault-gauge {
   position: relative;
   height: 12px;
