@@ -720,10 +720,10 @@ function ddSelect(label, key, eye, options) {
 
 function renderTreatmentPlanFields(eye, data) {
   const targetAttrs = isPresbyondProcedure(data.procedure)
-    ? `type="number" min="${PRESBYOND_TARGET_MIN}" max="${PRESBYOND_TARGET_MAX}" step="0.25" placeholder="${PRESBYOND_TARGET_DEFAULT}"`
+    ? `type="text" inputmode="decimal" data-dd-target-input="true" placeholder="${PRESBYOND_TARGET_DEFAULT}"`
     : isPresbyMaxProcedure(data.procedure)
-      ? 'type="number" step="0.01" placeholder="OD 0.00 / OS -0.89"'
-      : 'type="number" step="0.25" placeholder="0.00"';
+      ? 'type="text" inputmode="decimal" data-dd-target-input="true" placeholder="OD 0.00 / OS -0.89"'
+      : 'type="text" inputmode="decimal" data-dd-target-input="true" placeholder="0.00"';
   return `<div class="dd-grid cols-4">
     ${ddField("Sphere (D)", "sph", eye, 'type="number" step="0.25" placeholder="-3.00"')}
     ${ddField("Cylinder (D)", "cyl", eye, 'type="number" step="0.25" placeholder="-1.00"')}
@@ -931,8 +931,8 @@ function renderDongDoResults(calc, data) {
     <div class="dd-results">
       <div class="dd-results-title">Calculation Results</div>
       <div class="dd-result-grid">
-        <div><span>Input Sphere</span><strong>${calc.finalLaserSph >= 0 ? "+" : ""}${calc.finalLaserSph.toFixed(2)} D</strong></div>
-        <div><span>Input Cylinder</span><strong>${calc.cyl >= 0 ? "+" : ""}${calc.cyl.toFixed(2)} D</strong></div>
+        <div><span>Treatment Sphere</span><strong>${calc.finalLaserSph >= 0 ? "+" : ""}${calc.finalLaserSph.toFixed(2)} D</strong></div>
+        <div><span>Treatment Cylinder</span><strong>${calc.cyl >= 0 ? "+" : ""}${calc.cyl.toFixed(2)} D</strong></div>
         <div><span>${isPresbyond || isPresbyMax ? "Total Treatment" : "Total Diopters"}</span><strong>${(isPresbyond ? calc.presbyondPlan.totalTreatment : isPresbyMax ? calc.presbyMaxPlan.totalTreatment : calc.totalD).toFixed(2)} D</strong></div>
       </div>
       ${smileRangeInvalid ? `<div class="dd-alert danger">${calc.smileRangeValidation.warning}</div>` : ""}
